@@ -1,3 +1,4 @@
+@tool
 class_name GrassField
 extends Node3D
 
@@ -7,17 +8,42 @@ extends Node3D
 ## Godot-recommended vegetation technique (see "Optimization using MultiMeshes"
 ## and "Animating thousands of fish" docs): thousands of instances, one node,
 ## no per-instance CPU animation, custom_aabb for correct frustum culling.
+##
+## @tool so tuning the knobs below in the Inspector rebuilds live, in-editor
+## or at runtime, without a scene restart — see _queue_rebuild().
 
 @export var blade_count: int = 10000:
 	set(value):
 		blade_count = maxi(1, value)
-@export var field_radius: float = 40.0
-@export var clump_count: int = 60
-@export var clump_spread: float = 8.0
-@export var min_blade_height: float = 0.4
-@export var max_blade_height: float = 1.0
-@export var min_scale: float = 0.7
-@export var max_scale: float = 1.4
+		_queue_rebuild()
+@export var field_radius: float = 40.0:
+	set(value):
+		field_radius = value
+		_queue_rebuild()
+@export var clump_count: int = 60:
+	set(value):
+		clump_count = maxi(1, value)
+		_queue_rebuild()
+@export var clump_spread: float = 8.0:
+	set(value):
+		clump_spread = value
+		_queue_rebuild()
+@export var min_blade_height: float = 0.4:
+	set(value):
+		min_blade_height = value
+		_queue_rebuild()
+@export var max_blade_height: float = 1.0:
+	set(value):
+		max_blade_height = value
+		_queue_rebuild()
+@export var min_scale: float = 0.7:
+	set(value):
+		min_scale = value
+		_queue_rebuild()
+@export var max_scale: float = 1.4:
+	set(value):
+		max_scale = value
+		_queue_rebuild()
 @export var cast_shadows: bool = false:
 	set(value):
 		cast_shadows = value
@@ -26,9 +52,20 @@ extends Node3D
 
 var _mmi: MultiMeshInstance3D
 var _blade_positions: Array[Vector2] = []
+var _ready_done: bool = false
+var _rebuild_queued: bool = false
 
 func _ready() -> void:
 	_build_field()
+	_ready_done = true
+
+## Debounces Inspector edits (Godot sets every exported var once while
+## deserializing the scene, before _ready runs) into a single rebuild.
+func _queue_rebuild() -> void:
+	if not _ready_done or _rebuild_queued:
+		return
+	_rebuild_queued = true
+	rebuild.call_deferred()
 
 ## Positions the generator computed for each blade (source of truth for the
 ## distribution). Readable under headless — MultiMesh buffers are not.
@@ -37,7 +74,12 @@ func get_blade_positions() -> Array[Vector2]:
 
 ## Rebuilds the MultiMesh from current export values. Safe to call at runtime.
 func rebuild() -> void:
+	_rebuild_queued = false
 	if _mmi:
+		# remove_child first — queue_free alone leaves the old "Grass" node
+		# in the tree until end-of-frame, so the new one collides and gets
+		# renamed "Grass2", breaking get_node("Grass") lookups.
+		remove_child(_mmi)
 		_mmi.queue_free()
 	_mmi = null
 	_blade_positions.clear()

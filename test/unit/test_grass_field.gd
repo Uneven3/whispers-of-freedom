@@ -78,6 +78,17 @@ func test_uses_custom_instance_data_for_wind_variation():
 	assert_not_null(blade_mat, "blade uses a ShaderMaterial")
 	assert_not_null(blade_mat.shader, "blade shader assigned")
 
+func test_blade_count_rebuilds_live_after_ready():
+	var field := _build_field()
+	await get_tree().process_frame
+	field.blade_count = 500
+	# _queue_rebuild() defers the rebuild — give the deferred call two frames
+	# to land before asserting, matching how it behaves in the Inspector.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mmi: MultiMeshInstance3D = field.get_node("Grass")
+	assert_eq(mmi.multimesh.instance_count, 500, "editing an export var after _ready rebuilds without a scene restart")
+
 func test_grass_field_scene_loads_with_player():
 	var ps: PackedScene = load("res://scenes/grass_field.tscn")
 	assert_not_null(ps, "grass_field.tscn should load")
