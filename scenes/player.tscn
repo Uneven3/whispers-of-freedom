@@ -12,9 +12,13 @@
 [ext_resource type="Script" path="res://scripts/player_action_stack/combat/combat_debug_reporter.gd" id="36_combat_debug"]
 [ext_resource type="Script" path="res://scripts/player_action_stack/combat/strike_action.gd" id="39_strike_action"]
 [ext_resource type="PackedScene" path="res://scenes/entity_base.tscn" id="entity_base"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/spawn_snap.gd" id="40_spawn_snap"]
 
 [node name="Player" type="Node3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="SpawnSnap" type="Node" parent="."]
+script = ExtResource("40_spawn_snap")
 
 [node name="EntityController" parent="." instance=ExtResource("entity_base")]
 
