@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<game_design_document>
+    <meta>
+        <title>Druid: Shape-Shifter's Ritual</title>
+        <pitch>A third-person action-adventure where a shape-shifting druid learns to heal a dying world—using elemental magic, fluid stealth, and rhythmic combat against an eldritch purple corruption—and then managing the reborn ecosystem as it wakes.</pitch>
+        <genre>Action-Adventure with Exploration &amp; Ecosystem Management</genre>
+        <format>3D</format>
+        <platform>PC (Windows, macOS, Linux)</platform>
+        <multiplayer_stance>Single-player (co-op architecture ready for future)</multiplayer_stance>
+    </meta>
+
+    <pillars>
+        <pillar name="World State is Visual and Audio (Not UI)">The player reads zone health, corruption spread, and ecosystem recovery from visuals and audio—color gradients, particle density, ambience layering. Minimal HUD, contextual only.</pillar>
+        <pillar name="Responsive, Physical Movement &amp; Combat (BotW)">Every input feels immediate. Climbing has cadence. Landing has impact. Combat reads as rhythm—counter windows are tight, feedback is sharp, player feels their timing skill.</pillar>
+        <pillar name="One Unified Toolkit">Forms and elemental magic used for both combat and restoration. Panther sneaks and clears corruption. Monkey smashes enemies and clears stone debris. Avian reaches high ledges and targets distant corruption sources.</pillar>
+        <pillar name="Dead-to-Alive Transformation">The ritual moment and cascade are emotional peaks. Grey, silent biome becomes vibrant, alive, unique. Permanence matters—returning shows biological recovery.</pillar>
+    </pillars>
+
+    <aesthetics>
+        <visual_style>Low-poly 3D with realistic, grounded proportions. Richness from particles, lighting, and atmosphere—geometry stays lean. Strong silhouettes. Readability prioritized over detail.</visual_style>
+        <color_language>
+            <state name="Corruption">Purple/cold blue = wrongness, decay</state>
+            <state name="Dead">Grey/cracked earth = lifelessness, exhaustion</state>
+            <state name="Restoring">Transitional green/murky water = fragile recovery</state>
+            <state name="Alive">Soft greens, clear blues, warm haze = thriving, safe</state>
+        </color_language>
+        <elemental_spirits>
+            <element name="Water">Flowing blue-white, ripple particles</element>
+            <element name="Earth">Amber/brown, dust and stone fragments</element>
+            <element name="Wind">Green-teal, flowing trails</element>
+            <element name="Fire">Red-orange, ember sparks</element>
+        </elemental_spirits>
+        <sonic_identity>Reactive music tied to player/world state. Every input has audio confirmation. Ambience communicates zone health (silence → layered life). Ritual music zone-specific (4 element types × potential variation).</sonic_identity>
+        <ui_direction>BotW-minimal. Diegetic when possible (stamina shown through character fatigue, form shown through appearance). Only essential HUD (stamina, form indicator, zone state). Contextual, translucent menus.</ui_direction>
+    </aesthetics>
+
+    <mechanics_and_systems>
+        <system name="Shapeshifting/Form System">
+            <description>Instant snap between three forms (Panther, Monkey, Avian). Collision shapes change in one frame. Velocity preserved. Elemental particle burst on shift.</description>
+            <constraints>
+                <constraint>Shift must be frame-perfect, no animation delay</constraint>
+                <constraint>Each form unlocks distinct ability set (takedowns, counters, ranged)</constraint>
+                <constraint>Collision validation required to prevent wall-clipping</constraint>
+            </constraints>
+        </system>
+
+        <system name="Combat System">
+            <description>Form-specific combat mechanics with distinct rhythms and feedback.</description>
+            <forms>
+                <form name="Panther">
+                    <playstyle>Stealth, takedowns, silent kills</playstyle>
+                    <feedback>Muffled audio, heightened enemy tells, silent animations</feedback>
+                    <core_mechanic>Magnetic takedown windows after silent approach</core_mechanic>
+                </form>
+                <form name="Monkey">
+                    <playstyle>Rhythmic counters, crowd control, magnetic targeting</playstyle>
+                    <feedback>Extreme hitpause on successful counters (celebration of timing)</feedback>
+                    <core_mechanic>Counter-based rhythm—read enemy telegraph, hit tight window</core_mechanic>
+                    <constraint>Counter window must be forgiving (±100ms tolerance)</constraint>
+                </form>
+                <form name="Avian">
+                    <playstyle>Ranged, heavy draw-and-release, shoulder-camera aim</playstyle>
+                    <feedback>Sharp impact, satisfying contact</feedback>
+                    <core_mechanic>Tension builds on draw, recoil on release, discovery on miss</core_mechanic>
+                </form>
+            </forms>
+        </system>
+
+        <system name="Traversal &amp; Movement">
+            <description>BotW-style movement with stamina gates and physicality.</description>
+            <constraints>
+                <constraint>Instant input response with slight momentum (no floaty feel)</constraint>
+                <constraint>Stamina gates climbing, swimming, sprinting—effort is visible</constraint>
+                <constraint>Landing has weight: camera dips on hard falls, impact audio plays</constraint>
+                <constraint>Stamina depletion follows physics (climbing costs more than running)</constraint>
+            </constraints>
+        </system>
+
+        <system name="Progression System (Use-to-Improve)">
+            <description>Skills evolve through use, not XP grinding. Throw fireballs 50 times, damage scales. Parry 100 times, counter window widens.</description>
+            <constraints>
+                <constraint>No skill trees or arbitrary leveling</constraint>
+                <constraint>Every player action is practice—mastery emerges naturally</constraint>
+                <constraint>Progression curve: rapid early, diminishing returns mid-game, plateau late-game</constraint>
+                <constraint>Feedback must be immediate (numbers rise, windows open wider, cooldowns shrink)</constraint>
+            </constraints>
+        </system>
+
+        <system name="Ritual &amp; Restoration">
+            <description>Zone transformation through discovered rituals. Music-driven timing mechanic. Cascade effect on success.</description>
+            <constraints>
+                <constraint>Ritual recipe must be discovered through investigation, not quest log</constraint>
+                <constraint>Timing mechanic: rhythm-based windows tied to music beats</constraint>
+                <constraint>Timing window tolerance: forgiving (±100ms) for accessibility</constraint>
+                <constraint>Success triggers cascade: visual transform + audio layering + particles</constraint>
+            </constraints>
+        </system>
+
+        <system name="Zone State Machine">
+            <description>Zones follow state progression: Dead → Restoring/Defending → Alive. Visual and functional changes at each state.</description>
+            <states>
+                <state name="Dead">Silent, grey, corrupted. No life. High enemy density.</state>
+                <state name="Restoring">Post-ritual, colors returning, audio beginning to layer. Vulnerable to counter-attack.</state>
+                <state name="Alive">Fully restored, vibrant, biome-unique. Life present. Low/zero enemy density.</state>
+            </states>
+            <constraint>Zone state persists across sessions—returning reveals biological recovery</constraint>
+        </system>
+
+        <system name="Defense System">
+            <description>Post-ritual wave defense phase. Infinite small waves that scale with zone difficulty. Player choice to defend now or leave affects restored biome vulnerability.</description>
+            <constraints>
+                <constraint>Waves are small but infinite—design gates progression by biome threat level</constraint>
+                <constraint>Primary purpose: automate defenses for restored biomes, preventing re-corruption</constraint>
+                <constraint>Secondary purpose: force player to prioritize which corrupted zones are most dangerous neighbors</constraint>
+                <constraint>Difficulty scales with zone, not player level</constraint>
+                <constraint>Player can leave zone before all waves clear—incomplete defense = biome vulnerability</constraint>
+            </constraints>
+        </system>
+
+        <system name="Ecosystem Management">
+            <description>Post-defense, player sculpts biome toward self-sufficiency using elemental resources.</description>
+            <constraints>
+                <constraint>Player has elemental power budget to spend</constraint>
+                <constraint>Place water sources, seeds, wind effects, heat stones</constraint>
+                <constraint>Biome health meter tracks progress toward self-sufficiency</constraint>
+                <constraint>No "wrong" placements, but some feel more elegant than others</constraint>
+                <constraint>When biome reaches self-sufficiency, player can leave</constraint>
+            </constraints>
+        </system>
+    </mechanics_and_systems>
+
+    <technical_frame>
+        <engine>Godot 4.6+</engine>
+        <language>GDScript</language>
+        <rendering>Forward+</rendering>
+        <physics>Jolt (default in Godot 4.6)</physics>
+        <unit_scale>1 unit = 1 meter</unit_scale>
+        <save_system>Single JSON file (user://save_data.json), portable across machines, tracks world state + player progression</save_system>
+        <input_system>Godot InputMap with semantic actions</input_system>
+        <audio_routing>Strict AudioBus separation (World vs Enemies) for stealth-mode filtering</audio_routing>
+
+        <key_systems>
+            <system name="PlayerRoot">CharacterBody3D drives physics, gravity, stamina</system>
+            <system name="FormManager">Swaps form child branches (mesh, collision, animation) in one frame, preserves velocity</system>
+            <system name="SkillTracker">Autoload with dictionary-based use-to-improve progression, emits signals on skill evolution</system>
+            <system name="ObjectPool">Pre-allocates enemies and particles to avoid runtime instantiation stutter</system>
+            <system name="DefenseManager">Wave director and enemy spawner for post-ritual defense</system>
+            <system name="CascadeManager">Ecosystem resource placement and biome health tracking</system>
+        </key_systems>
+
+        <risks>
+            <risk description="Shapeshift wall-clipping: collision mismatch when form changes" mitigation="Implement ShapeCast/Raycast validation before form swap. Revert or nudge player if new form doesn't fit." prototype_gate="Validate in early graybox phase"/>
+            <risk description="Defense phase pathfinding: many enemies + dynamic obstacles can cause stuck agents" mitigation="Use NavigationServer with dynamic avoidance. Fallback to simplified movement or async pathing if needed." prototype_gate="Stress test with 5-10 simultaneous enemies in mid-graybox"/>
+            <risk description="Ritual timing latency: rhythm mechanic requires precise audio sync" mitigation="Use AudioStreamPlayer with local beat detection. Validate latency tolerance at 60 FPS. For co-op (future), implement client prediction + server clock sync." prototype_gate="Rhythm test in graybox—validate ±100ms tolerance"/>
+        </risks>
+    </technical_frame>
+
+    <production_roadmap>
+        <phase number="1" name="Graybox Prototype" duration_weeks="6-8">
+            <description>Playable core loop with placeholder visuals, no sound. Prove all mechanics work.</description>
+            <core_tasks>
+                <task>Player movement system (BotW traversal + stamina)</task>
+                <task>Shapeshifting core (instant form swap, collision validation)</task>
+                <task>Panther form (stealth, takedowns, detection)</task>
+                <task>Monkey form (parry/counter, magnetic targeting, hitpause)</task>
+                <task>Avian form (ranged, aim camera, impact)</task>
+                <task>Use-to-improve progression backend</task>
+                <task>Zone state machine (dead → restoring → alive)</task>
+                <task>Defense phase manager (wave director)</task>
+                <task>Biome management system (resource placement, health tracking)</task>
+                <task>Enemy AI (basic cultist behavior, pathfinding)</task>
+                <task>Rain ritual mechanic (music timing, cascade system)</task>
+                <task>Minimal HUD (stamina, form indicator, zone state)</task>
+            </core_tasks>
+            <depth_tasks>
+                <task>Lock-on targeting system</task>
+                <task>Investigation system (finding ritual objects)</task>
+                <task>Zone re-corruption triggers</task>
+                <task>Biological recovery simulation over time</task>
+            </depth_tasks>
+            <polish_tasks>
+                <task>Input buffering</task>
+                <task>Perfect parry slowmo effect</task>
+            </polish_tasks>
+        </phase>
+
+        <phase number="2" name="Production Art &amp; Audio" duration_weeks="5-6" parallel="true">
+            <asset_phase>
+                <core_tasks>
+                    <task>Player druid model (low-poly, readable silhouette)</task>
+                    <task>Shapeshifted forms (Panther, Monkey, Avian)</task>
+                    <task>Base character animations (movement, attacks, shifts)</task>
+                    <task>Dead zone terrain tileset</task>
+                    <task>Eldritch corruption terrain and visual language</task>
+                    <task>Enemy models (cultists, corrupted creatures)</task>
+                    <task>Ritual site models and environmental dressing</task>
+                </core_tasks>
+            </asset_phase>
+            <sound_phase>
+                <core_tasks>
+                    <task>Stealth acoustic filter (bus mixing setup)</task>
+                    <task>Combat hit SFX and impact feedback</task>
+                    <task>Dead zone ambient soundscape</task>
+                    <task>Ritual music (core: 4 base tracks, one per element)</task>
+                    <task>Cascade audio (water, wind, rustling, birdsong layering)</task>
+                </core_tasks>
+            </sound_phase>
+        </phase>
+
+        <phase number="3" name="Feel &amp; Polish" duration_weeks="3-4">
+            <description>Game feel effects, tuning, and visual/audio polish.</description>
+            <core_tasks>
+                <task>Shapeshifting snap VFX (elemental particle bursts)</task>
+                <task>Combat hitpause tuning (hit detection windows, feedback timing)</task>
+                <task>Eldritch shatter VFX (corruption effects)</task>
+                <task>Cascade bloom (ritual payoff visual)</task>
+                <task>Attack flashes (counter readability)</task>
+            </core_tasks>
+        </phase>
+
+        <phase number="4" name="Testing &amp; Optimization" duration_weeks="ongoing" parallel="true">
+            <description>Unit testing, integration testing, load testing, profiling.</description>
+            <tasks>
+                <task>Unit testing (GUT framework setup)</task>
+                <task>Per-mechanic test coverage (movement, combat, progression, ritual)</task>
+                <task>Full zone playthrough stress tests</task>
+                <task>Defense wave performance (10+ enemies simultaneously)</task>
+                <task>Particle effect budget validation (maintain 60 FPS at cascade peak)</task>
+            </tasks>
+        </phase>
+    </production_roadmap>
+
+    <research_requirements>
+        <technical_unknowns>
+            <task>Shapeshift Collision Validation: Prototype ShapeCast/Raycast system to prevent wall-clipping on form swap</task>
+            <task>Defense Phase Pathfinding: Test Godot NavigationServer with dynamic obstacles; validate enemy responsiveness with 5-10 simultaneous enemies</task>
+            <task>Ritual Timing Mechanic: Build minimal project with AudioStreamPlayer and beat detection; validate ±100ms hit windows at 60 FPS</task>
+            <task>Magnetic Targeting (Monkey): Prototype lock-on system; test responsiveness, range, multi-target behavior</task>
+            <task>Stealth Detection (Panther): Implement LOS checks with RayCast3D; validate detection ranges and angles</task>
+            <task>Zone Cascade Effects: Prototype color LUT transition + particle burst + audio stem layering; test performance</task>
+            <task>Persistent World State: Design save schema; test serialization/deserialization of zone states and progression data</task>
+        </technical_unknowns>
+        <design_math_unknowns>
+            <task>Counter Window Timing: Determine exact milliseconds (current: ±100ms forgiving). Playtest and measure feel.</task>
+            <task>Stamina Depletion Rates: Define costs per action (sprint, climb, swim). Target: 3-4 second sprint, 5-6 second climb.</task>
+            <task>Form Ability Cooldown/Cost: Define resource cost or cooldown per ability. Playtest for balance across all three forms.</task>
+            <task>Use-to-Improve Curve: Design progression curve (rapid early, diminishing mid, plateau late). Validate novice feels improvement, veterans hit ceiling.</task>
+            <task>Defense Wave Difficulty: Test enemy counts (3, 5, 10). Target: challenging but winnable, player skill directly impacts survival.</task>
+            <task>Ecosystem Resource Economics: Design resource budget. Playtest: player feels agency, no obvious "right answer".</task>
+        </design_math_unknowns>
+        <art_audio_pipeline_unknowns>
+            <task>Low-Poly Silhouette Readability: Create 3-5 enemy silhouettes; test at distance. Validate: player can ID enemy type without UI.</task>
+            <task>Particle Budget &amp; Performance: Create particle effect stress test; measure FPS at cascade peak. Target: 60 FPS maintained.</task>
+            <task>Audio Bus Routing: Set up World/Enemies AudioBus separation; test real-time parameter changes during stealth transitions.</task>
+            <task>Ritual Music Composition: Source or compose 4 zone-specific ritual tracks (water, earth, wind, fire). Validate cohesion.</task>
+            <task>Animation Blending Between Forms: Create two skeletal meshes; test animation blend on form shift. Target: no visible pop or jank.</task>
+        </art_audio_pipeline_unknowns>
+    </research_requirements>
+
+    <mvp_definition>
+        <description>One complete zone with all core mechanics working: explore → investigate → stealth/combat → ritual → defense → ecosystem management.</description>
+        <requirements>
+            <req>Full zone loop playable</req>
+            <req>All three forms functional with distinct feels</req>
+            <req>Zone state transitions with visual/audio feedback</req>
+            <req>Use-to-improve progression tracking</req>
+            <req>Defense wave (5-10 enemies, small but infinite)</req>
+            <req>Ritual timing mechanic with at least one zone music track</req>
+        </requirements>
+    </mvp_definition>
+
+</game_design_document>

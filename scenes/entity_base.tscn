@@ -1,0 +1,122 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player_action_stack/entity_controller.gd" id="1_iitmg"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/visuals_pivot.gd" id="2_kr8i3"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/movement_broker.gd" id="3_h5if6"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/walk_motor.gd" id="5_1yulq"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/sprint_motor.gd" id="6_f5c7c"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/sneak_motor.gd" id="7_hksxd"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/jump_motor.gd" id="8_ln53p"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/fall_motor.gd" id="9_2qaqc"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/climb_motor.gd" id="10_xbahh"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/wall_jump_motor.gd" id="11_x07yp"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/edge_leap_motor.gd" id="12_35q2q"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/auto_vault_motor.gd" id="13_m7nyq"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/mantle_motor.gd" id="14_8exai"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/stairs_motor.gd" id="15_6hp4d"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/ladder_motor.gd" id="16_bay6o"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/glide_motor.gd" id="17_vr56m"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/motors/strike_motor.gd" id="18_pjbfl"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/services/ground_service.gd" id="19_pwbnc"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/services/stairs_service.gd" id="20_trvug"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/services/ladder_service.gd" id="21_r3ler"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/services/ledge_service.gd" id="22_pu5g5"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/stamina_component.gd" id="23_svxm4"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_cbody"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_vmesh"]
+
+[node name="EntityController" type="Node" unique_id=1919641928]
+script = ExtResource("1_iitmg")
+
+[node name="Body" type="CharacterBody3D" parent="." unique_id=1733088829]
+collision_layer = 2
+floor_snap_length = 0.4
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Body" unique_id=670928604]
+shape = SubResource("CapsuleShape3D_cbody")
+
+[node name="VisualsPivot" type="Node3D" parent="." unique_id=1757425754]
+script = ExtResource("2_kr8i3")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="VisualsPivot" unique_id=1445867683]
+mesh = SubResource("CapsuleMesh_vmesh")
+
+[node name="MovementBroker" type="Node" parent="." unique_id=1172426050]
+script = ExtResource("3_h5if6")
+motor_map = Dictionary[int, NodePath]({
+1: NodePath("WalkMotor"),
+2: NodePath("SprintMotor"),
+3: NodePath("FallMotor"),
+4: NodePath("JumpMotor"),
+5: NodePath("AutoVaultMotor"),
+6: NodePath("ClimbMotor"),
+7: NodePath("MantleMotor"),
+8: NodePath("StairsMotor"),
+9: NodePath("LadderMotor"),
+10: NodePath("GlideMotor"),
+11: NodePath("SneakMotor"),
+12: NodePath("WallJumpMotor"),
+13: NodePath("EdgeLeapMotor"),
+14: NodePath("StrikeMotor")
+})
+
+[node name="WalkMotor" type="Node" parent="MovementBroker" unique_id=1891427688]
+script = ExtResource("5_1yulq")
+
+[node name="SprintMotor" type="Node" parent="MovementBroker" unique_id=1505036191]
+script = ExtResource("6_f5c7c")
+
+[node name="SneakMotor" type="Node" parent="MovementBroker" unique_id=1724690974]
+script = ExtResource("7_hksxd")
+
+[node name="JumpMotor" type="Node" parent="MovementBroker" unique_id=200986662]
+script = ExtResource("8_ln53p")
+
+[node name="FallMotor" type="Node" parent="MovementBroker" unique_id=2081681055]
+script = ExtResource("9_2qaqc")
+
+[node name="ClimbMotor" type="Node" parent="MovementBroker" unique_id=599820010]
+script = ExtResource("10_xbahh")
+
+[node name="WallJumpMotor" type="Node" parent="MovementBroker" unique_id=2088453946]
+script = ExtResource("11_x07yp")
+
+[node name="EdgeLeapMotor" type="Node" parent="MovementBroker" unique_id=1900000006]
+script = ExtResource("12_35q2q")
+
+[node name="AutoVaultMotor" type="Node" parent="MovementBroker" unique_id=2009426734]
+script = ExtResource("13_m7nyq")
+
+[node name="MantleMotor" type="Node" parent="MovementBroker" unique_id=1058184008]
+script = ExtResource("14_8exai")
+
+[node name="StairsMotor" type="Node" parent="MovementBroker" unique_id=1900000003]
+script = ExtResource("15_6hp4d")
+
+[node name="LadderMotor" type="Node" parent="MovementBroker" unique_id=1900000004]
+script = ExtResource("16_bay6o")
+
+[node name="GlideMotor" type="Node" parent="MovementBroker" unique_id=1900000005]
+script = ExtResource("17_vr56m")
+
+[node name="StrikeMotor" type="Node" parent="MovementBroker" unique_id=1900000010]
+script = ExtResource("18_pjbfl")
+
+[node name="Services" type="Node" parent="." unique_id=1178032522]
+
+[node name="GroundService" type="Node" parent="Services" unique_id=1019705975]
+script = ExtResource("19_pwbnc")
+
+[node name="StairsService" type="Node" parent="Services" unique_id=1900000001]
+script = ExtResource("20_trvug")
+
+[node name="LadderService" type="Node" parent="Services" unique_id=1900000002]
+script = ExtResource("21_r3ler")
+
+[node name="LedgeService" type="Node" parent="Services" unique_id=1438303885]
+script = ExtResource("22_pu5g5")
+
+[node name="StaminaComponent" type="Node" parent="." unique_id=37214724]
+script = ExtResource("23_svxm4")

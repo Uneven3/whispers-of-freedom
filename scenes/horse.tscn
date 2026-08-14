@@ -1,0 +1,48 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/horse_brain.gd" id="1_horse_brain"]
+[ext_resource type="PackedScene" path="res://scenes/entity_base.tscn" id="entity_base"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_horse"]
+radius = 1.0
+height = 4.0
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_horse"]
+radius = 1.0
+height = 4.0
+
+[node name="Horse" type="Node3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 3)
+
+[node name="EntityController" parent="." instance=ExtResource("entity_base")]
+default_motor_mask = Array[StringName]([&"WalkMotor", &"SprintMotor", &"FallMotor", &"JumpMotor", &"StairsMotor", &"AutoVaultMotor", &"MantleMotor"])
+
+[node name="Body" parent="EntityController" index="0"]
+
+[node name="CollisionShape3D" parent="EntityController/Body" index="0"]
+shape = SubResource("CapsuleShape3D_horse")
+rotation = Vector3(1.5707964, 0, 0)
+
+[node name="VisualsPivot" parent="EntityController" index="1"]
+
+[node name="MeshInstance3D" parent="EntityController/VisualsPivot" index="0"]
+mesh = SubResource("CapsuleMesh_horse")
+rotation = Vector3(1.5707964, 0, 0)
+
+[node name="MovementBroker" parent="EntityController" index="2"]
+brain_path = NodePath("../HorseBrain")
+
+[node name="WalkMotor" parent="EntityController/MovementBroker" index="1"]
+max_speed = 8.0
+acceleration = 12.0
+friction = 18.0
+
+[node name="SprintMotor" parent="EntityController/MovementBroker" index="2"]
+sprint_speed = 14.0
+sprint_acceleration = 15.0
+
+[node name="StaminaComponent" parent="EntityController" index="4"]
+max_stamina = 150.0
+
+[node name="HorseBrain" type="Node" parent="EntityController"]
+script = ExtResource("1_horse_brain")

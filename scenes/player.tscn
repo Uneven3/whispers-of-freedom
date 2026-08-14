@@ -1,0 +1,74 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/player_brain.gd" id="2_brain"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/camera/camera_rig.gd" id="14_cam"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/player_action_debug_context.gd" id="1_debug"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/movement/climb_toggle_component.gd" id="25_climb_toggle"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/form/form_component.gd" id="28_form_component"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/form/form_broker.gd" id="29_form_broker"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/form/form_debug_reporter.gd" id="30_form_debug"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/combat_broker.gd" id="31_combat_broker"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/bow_action.gd" id="32_bow_action"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/parry_counter_action.gd" id="33_parry_action"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/panther_takedown_action.gd" id="34_takedown_action"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/hit_pause_component.gd" id="35_hit_pause"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/combat_debug_reporter.gd" id="36_combat_debug"]
+[ext_resource type="Script" path="res://scripts/player_action_stack/combat/strike_action.gd" id="39_strike_action"]
+[ext_resource type="PackedScene" path="res://scenes/entity_base.tscn" id="entity_base"]
+
+[node name="Player" type="Node3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="EntityController" parent="." instance=ExtResource("entity_base")]
+
+[node name="PlayerBrain" type="Node" parent="EntityController"]
+script = ExtResource("2_brain")
+
+[node name="ClimbToggleComponent" type="Node" parent="EntityController"]
+script = ExtResource("25_climb_toggle")
+
+[node name="CombatBroker" type="Node" parent="EntityController"]
+script = ExtResource("31_combat_broker")
+
+[node name="BowAction" type="Node" parent="EntityController/CombatBroker"]
+script = ExtResource("32_bow_action")
+
+[node name="ParryCounterAction" type="Node" parent="EntityController/CombatBroker"]
+script = ExtResource("33_parry_action")
+
+[node name="PantherTakedownAction" type="Node" parent="EntityController/CombatBroker"]
+script = ExtResource("34_takedown_action")
+
+[node name="StrikeAction" type="Node" parent="EntityController/CombatBroker"]
+script = ExtResource("39_strike_action")
+
+[node name="HitPauseComponent" type="Node" parent="EntityController/CombatBroker"]
+script = ExtResource("35_hit_pause")
+
+[node name="CombatDebugReporter" type="Node" parent="EntityController/CombatBroker"]
+script = ExtResource("36_combat_debug")
+
+[node name="FormComponent" type="Node" parent="EntityController"]
+script = ExtResource("28_form_component")
+
+[node name="FormBroker" type="Node" parent="EntityController"]
+script = ExtResource("29_form_broker")
+
+[node name="FormDebugReporter" type="Node" parent="EntityController/FormBroker"]
+script = ExtResource("30_form_debug")
+
+[node name="PlayerActionDebugContext" type="Node" parent="EntityController"]
+script = ExtResource("1_debug")
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("14_cam")
+
+[node name="CameraBrain" type="Node" parent="CameraRig"]
+
+[node name="CameraBroker" type="Node" parent="CameraRig"]
+
+[node name="Effects" type="Node" parent="CameraRig"]
+
+[node name="Lens" type="SpringArm3D" parent="CameraRig"]
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig/Lens"]

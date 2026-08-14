@@ -1,0 +1,138 @@
+# Norte — qué estamos construyendo
+
+**Breath of Freedom** — acción-aventura de mundo abierto en Bevy (Rust),
+GNU GPL, co-op multiplayer como objetivo base. Busca el *feeling* de
+**The Legend of Zelda: Breath of the Wild** sin nada de la IP de Zelda:
+mundo, historia, razas y assets propios. (≤200 líneas; este archivo es la
+visión — lo táctico vive en `AHORA.md`, las reglas en `ARCHITECTURE.md`.)
+
+## Postura legal / IP
+
+- Cero nombres, lore, personajes, música o assets de Zelda.
+- Lo "prestado" es mecánico y de sensación (escalada, stamina, glide,
+  combate con peso) — no protegible por copyright.
+- Referencias de tono/arte (no de assets): BotW, Genshin Impact, Monster
+  Hunter Stories 3.
+
+## Pilares
+
+1. **Movimiento primero** — respuesta instantánea con momentum leve; la
+   stamina limita el esfuerzo; escalar/nadar/planear se sienten físicos.
+2. **Traversal abierto** — casi cualquier superficie es escalable, a un costo.
+3. **Combate con peso** — lento y deliberado; leer al enemigo importa más
+   que la velocidad de input.
+4. **Exploración contemplativa** — sin urgencia narrativa impuesta.
+5. **Multiplayer desde el día uno** — arquitectura multi-actor y
+   host-autoritativo desde temprano; single-player es la misma simulación
+   con un jugador local.
+6. **GNU / comunidad** — sin monetización, todo forkeable.
+7. **UI mínima** — el mundo comunica el estado.
+
+## Mundo y narrativa
+
+- Fantasía, sin humanos; razas inteligentes humanoides (diseño abierto).
+- Sin villano ni trama central obligatoria — inspiración *Majora's Mask*:
+  personajes con problemas propios que el jugador puede optar por resolver.
+- Tono sereno y contemplativo.
+
+## Dirección visual y sonora
+
+- **El norte es el *feeling* de Breath of the Wild, en low-poly.** No su
+  fidelidad ni su escala: la sensación — el mundo que invita a caminarlo, el
+  pasto que responde, la luz que cambia la hora. Cuando una decisión visual esté
+  en duda, la pregunta es *"¿se siente como BOTW?"*, y la respuesta se da
+  jugando.
+- **Low-poly porque los assets son más fáciles de hacer.** Ésa es la razón, y es
+  suficiente: sin artista dedicado, es lo único cost-efficient de autorear. No
+  depende de ninguna meta de rendimiento — si el target cambia, low-poly se
+  queda. Los assets actuales (Quaternius, MegaKits, Modular Dungeon) son de
+  prueba, reemplazables.
+- **Dirección artística por sobre fidelidad.** La belleza es *luz + color +
+  atmósfera*, no detalle geométrico ni texturas complejas; silueta legible y
+  paleta coherente antes que polígonos. Referencias: Journey (norte
+  aspiracional), art of rally, Gedonia, The Bloodline, BattleBit, Halo 1,
+  WoW Classic, Super Mario 64.
+- **PBR estilizado sobre `StandardMaterial`**, inclinado a lo plano: materiales
+  mate (roughness alto, cero metal), color e iluminación mandando. Para arte
+  propio: vertex-color / material plano apoyado en la luz, antes que sets PBR
+  texturizados. El terreno usa un `ExtendedMaterial` PBR único para sus capas;
+  toon, outline y pases fullscreen quedan como diagnósticos opt-in.
+- Assets de prototipado reemplazables mediante catálogo de presentación:
+  identidad de gameplay, visual y colisión permanecen independientes.
+- **Primero el feeling, después el rendimiento — y el móvil deja de ser un veto
+  (2026-08-07).** El piso objetivo sigue siendo un Android de gama media ~2021,
+  pero como *destino*, no como tribunal previo. Ninguna técnica se descarta por
+  lo que le pasaría en un aparato que **nunca se midió**: se construye lo que da
+  el feeling, se mide en lo que hay, y la adaptación al target se hace cuando el
+  feeling esté logrado — con un perfil (`BOF_PROFILE`), que el juego ya tiene.
+
+  *Por qué cambió:* durante meses las decisiones se tomaron contra propiedades
+  razonadas del hardware objetivo —`discard` apaga el early-Z, un vértice se
+  paga en bandwidth— que son ciertas y **nunca se verificaron en un teléfono**.
+  Eso costó: técnicas rechazadas por estimación que después resultaron
+  convenientes, y una sesión entera diseñando contra un aparato que nadie tiene.
+  Una medición real vale más que todo ese razonamiento; hasta que exista, no
+  manda.
+- **Profiler: después, no antes.** Construir instrumental de rendimiento —o
+  adoptar el de Bevy— se hace cuando el feeling esté logrado. Medir es para
+  decidir entre cosas que ya se ven bien, no para elegir qué se ve bien.
+- **Se mide en una AMD Polaris 11 (RX 460), 2016** — la del dev. Es modo
+  inmediato, así que sus milisegundos no transfieren a un tiler; pero es lo que
+  hay, y un número medido acá vale más que uno supuesto allá.
+- Música ambiental minimalista; SFX estilizados. Hasta tener audio real,
+  cada punto sonoro emite un *cue* de debug (`[audio] cue: …`).
+
+## Mecánicas (orden de prioridad)
+
+1. **Movimiento** — traversal físico gateado por stamina. ✅ base jugable
+2. **Cámara** — orbital tercera persona, apuntado y lock-on. ✅ base
+   implementada; checkpoint final del lock-on pendiente.
+3. **Combate** — melee con peso ✅, arco ✅, sigilo ✅ (bonus ×4), durabilidad
+   de armas e inventario base ✅. Escudo/parry ⏳.
+4. **Monturas** — ✅ horse base (montar, carga, inmunidad de dueño). El
+   diseño final es más ambicioso: criaturas variadas, terrestres y
+   voladoras, con vínculo personal jugador-criatura (línea *Avatar*:
+   Ikran/Direwolf), no transporte genérico. Las **voladoras son un motor, no una
+   clase**: reutilizan todo el montado y lo nuevo es un motor `Fly` que suspende
+   el contrato de suelo — primo directo de nadar/bucear.
+5. **Mundo y entorno** — ciclo día/noche ✅, mundo 320×320 + bosque ✅;
+   ⏳ próximo foco: recuperar rendimiento con profiling/LOD/culling antes de
+   sumar temperatura, clima, tala, animales o personajes. Después: crafteo y
+   buceo.
+6. **Multiplayer** — co-op host-autoritativo (contrato multi-actor ya
+   implementado; red no empezada).
+7. **Personajes/problemas** — quests opcionales estilo Majora's Mask.
+
+## Detalle mecánico comprometido
+
+- **Arco:** apuntado libre en dos fases, carga estilo Bannerlord (soltar
+  rápido = flecha lenta e imprecisa), caída parabólica real.
+- **Melee:** pocas armas bien diferenciadas por peso/velocidad/alcance,
+  todas con durabilidad (fuerza variar el arsenal).
+- **Sigilo:** multiplicador de daño en ataque sorpresa; bonus, no pilar.
+- **IA enemiga:** lee al jugador — percepción gradual ✅; flanqueo,
+  reacciones grupales y huida al estar heridos ⏳.
+- **Traversal:** escalar ✅, planear ✅, nadar/bucear ⏳ (con oxígeno y
+  corrientes, línea Fontaine de Genshin), snowboard en pendientes ⏳.
+- **Clima/día-noche ⏳:** ciclo visual y noche iluminada ✅; frío/calor
+  exigen preparación; lluvia moja y afecta el agarre; tormentas eléctricas
+  atraen metal; la noche cambia spawns y comportamiento.
+- **Crafteo ⏳:** equipo a partir de materiales del mundo (más que cocinar).
+
+## Qué NO estamos construyendo
+
+- Gacha, live service, battle pass.
+- Assets, historia o motor de Zelda.
+- Trama principal obligatoria con checklist de misiones.
+
+## Decisiones abiertas
+
+- Número objetivo de jugadores co-op.
+- Diseño de razas (cuántas, cuáles, rasgos).
+- Estructura del sistema de "problemas resolubles".
+- Diseño concreto de monturas (criaturas, domado/vínculo).
+- Árbol de crafteo/recetas.
+- Tamaño del mundo y modelo de persistencia.
+- Pipeline concreto de arte propio low-poly en **Blender** (LOD, compresión de
+  texturas para móvil). *Decidido:* arte propio low-poly en Blender, no
+  dependencia de CC0.
