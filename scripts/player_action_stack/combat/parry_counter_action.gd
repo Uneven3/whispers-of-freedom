@@ -25,6 +25,6 @@ func tick(intents: Intents, _delta: float, broker: Node) -> void:
 		return
 	if target.has_method("consume_parry"):
 		target.consume_parry()
-	broker.apply_damage(target, counter_damage, &"monkey_counter", &"heavy", target.global_position)
+	broker.apply_damage(target, counter_damage, &"parry_counter", &"heavy", target.global_position)
 	broker.set_combat_state(&"counter_hit")
 	broker.trigger_hit_pause(hit_pause_scale, hit_pause_duration)

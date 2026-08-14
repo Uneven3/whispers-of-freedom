@@ -31,6 +31,7 @@
 script = ExtResource("1_iitmg")
 
 [node name="Body" type="CharacterBody3D" parent="." unique_id=1733088829]
+unique_name_in_owner = true
 collision_layer = 2
 floor_snap_length = 0.4
 
@@ -44,6 +45,7 @@ script = ExtResource("2_kr8i3")
 mesh = SubResource("CapsuleMesh_vmesh")
 
 [node name="MovementBroker" type="Node" parent="." unique_id=1172426050]
+unique_name_in_owner = true
 script = ExtResource("3_h5if6")
 motor_map = Dictionary[int, NodePath]({
 1: NodePath("WalkMotor"),
@@ -107,16 +109,21 @@ script = ExtResource("18_pjbfl")
 [node name="Services" type="Node" parent="." unique_id=1178032522]
 
 [node name="GroundService" type="Node" parent="Services" unique_id=1019705975]
+unique_name_in_owner = true
 script = ExtResource("19_pwbnc")
 
 [node name="StairsService" type="Node" parent="Services" unique_id=1900000001]
+unique_name_in_owner = true
 script = ExtResource("20_trvug")
 
 [node name="LadderService" type="Node" parent="Services" unique_id=1900000002]
+unique_name_in_owner = true
 script = ExtResource("21_r3ler")
 
 [node name="LedgeService" type="Node" parent="Services" unique_id=1438303885]
+unique_name_in_owner = true
 script = ExtResource("22_pu5g5")
 
 [node name="StaminaComponent" type="Node" parent="." unique_id=37214724]
+unique_name_in_owner = true
 script = ExtResource("23_svxm4")

@@ -12,10 +12,9 @@ var _body: CharacterBody3D = null
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
-	## Path: Services/StairsService → Services → EntityController → Body
-	_body = get_node_or_null("../../Body") as CharacterBody3D
+	_body = get_node_or_null("%Body") as CharacterBody3D
 	if _body == null:
-		push_warning("StairsService: could not locate sibling Body — stairs disabled.")
+		push_warning("could not locate sibling Body — stairs disabled")
 		return
 	## Defer one frame so any Stairs added by scene instantiation order are present.
 	call_deferred("_connect_stairs")

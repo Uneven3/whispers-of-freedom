@@ -3,35 +3,30 @@ extends "res://addons/gut/test.gd"
 const CombatBrokerScript = preload("res://scripts/player_action_stack/combat/combat_broker.gd")
 const BowActionScript = preload("res://scripts/player_action_stack/combat/bow_action.gd")
 const ParryActionScript = preload("res://scripts/player_action_stack/combat/parry_counter_action.gd")
-const TakedownActionScript = preload("res://scripts/player_action_stack/combat/panther_takedown_action.gd")
+const TakedownActionScript = preload("res://scripts/player_action_stack/combat/takedown_action.gd")
 const StrikeActionScript = preload("res://scripts/player_action_stack/combat/strike_action.gd")
 const HitPauseScript = preload("res://scripts/player_action_stack/combat/hit_pause_component.gd")
 const CombatDummyScript = preload("res://scripts/world/combat_dummy.gd")
 const StrikeMotorScript = preload("res://scripts/player_action_stack/movement/motors/strike_motor.gd")
 const MovementBrokerScript = preload("res://scripts/player_action_stack/movement/movement_broker.gd")
 
-class FakeFormReader extends RefCounted:
-	var form_id: StringName = &"panther"
-	func get_current_form() -> StringName:
-		return form_id
-
 class MockMovementBroker extends MovementBroker:
 	var mock_reader: BodyReader
 	var active_mode: int = 3 # ID.FALL
-	
+
 	func _ready():
 		pass
-		
+
 	func get_body_reader() -> BodyReader:
 		return mock_reader
-		
+
 	func get_current_mode() -> int:
 		return active_mode
-		
+
 	func inject_forced_proposal(proposal: TransitionProposal) -> void:
 		active_mode = proposal.target_state
 
-func _make_broker(form_id: StringName) -> Array:
+func _make_broker() -> Array:
 	var root := Node3D.new()
 
 	var body := CharacterBody3D.new()
@@ -57,7 +52,7 @@ func _make_broker(form_id: StringName) -> Array:
 	parry.name = "ParryCounterAction"
 	broker.add_child(parry)
 	var takedown: Node = TakedownActionScript.new()
-	takedown.name = "PantherTakedownAction"
+	takedown.name = "TakedownAction"
 	broker.add_child(takedown)
 	var strike: Node = StrikeActionScript.new()
 	strike.name = "StrikeAction"
@@ -66,15 +61,13 @@ func _make_broker(form_id: StringName) -> Array:
 	hit_pause.name = "HitPauseComponent"
 	broker.add_child(hit_pause)
 
-	var form_reader := FakeFormReader.new()
-	form_reader.form_id = form_id
-	broker.configure(BodyReader.new(body), form_reader, null, root, movement_broker)
+	broker.configure(BodyReader.new(body), null, root, movement_broker)
 	add_child_autofree(root)
 
-	return [root, body, broker, form_reader, movement_broker, strike_motor]
+	return [root, body, broker, movement_broker, strike_motor]
 
-func test_avian_aim_sets_aiming_state():
-	var setup := _make_broker(&"avian")
+func test_aim_sets_aiming_state():
+	var setup := _make_broker()
 	var broker: Node = setup[2]
 	await get_tree().process_frame
 
@@ -86,8 +79,26 @@ func test_avian_aim_sets_aiming_state():
 	assert_true(broker.is_aiming())
 	assert_eq(broker.get_combat_state(), &"bow_drawn")
 
-func test_monkey_parry_hits_vulnerable_dummy():
-	var setup := _make_broker(&"monkey")
+func test_aiming_suppresses_strike_on_the_same_frame():
+	# Regression: wants_archery_release is partly derived from wants_attack
+	# (releasing the bow is "attack while aiming"), so ticking every action
+	# unconditionally would also fire a melee strike on a bow release.
+	var setup := _make_broker()
+	var broker: Node = setup[2]
+	await get_tree().process_frame
+
+	var intents := Intents.new()
+	intents.wants_archery_aim = true
+	intents.wants_attack = true
+	intents.wants_archery_release = true
+	intents.aim_direction = Vector3.FORWARD
+
+	broker.tick(intents, 0.016)
+
+	assert_eq(broker.get_combat_state(), &"bow_release", "bow should fire, not a melee strike")
+
+func test_parry_hits_vulnerable_dummy():
+	var setup := _make_broker()
 	var root: Node3D = setup[0]
 	var body: CharacterBody3D = setup[1]
 	var broker: Node = setup[2]
@@ -106,8 +117,8 @@ func test_monkey_parry_hits_vulnerable_dummy():
 	assert_eq(broker.get_combat_state(), &"counter_hit")
 	assert_lt(dummy.get_current_health(), dummy.max_health)
 
-func test_panther_takedown_finishes_near_dummy():
-	var setup := _make_broker(&"panther")
+func test_takedown_finishes_near_dummy():
+	var setup := _make_broker()
 	var root: Node3D = setup[0]
 	var body: CharacterBody3D = setup[1]
 	var broker: Node = setup[2]
@@ -125,8 +136,8 @@ func test_panther_takedown_finishes_near_dummy():
 	assert_eq(broker.get_combat_state(), &"takedown_hit")
 	assert_true(dummy.is_defeated())
 
-func test_monkey_strike_air_swing():
-	var setup := _make_broker(&"monkey")
+func test_strike_air_swing():
+	var setup := _make_broker()
 	var broker: Node = setup[2]
 
 	var intents := Intents.new()
@@ -147,13 +158,13 @@ func test_monkey_strike_air_swing():
 
 	assert_eq(broker.get_combat_state(), &"idle")
 
-func test_monkey_strike_snapping_to_target():
-	var setup := _make_broker(&"monkey")
+func test_strike_snapping_to_target():
+	var setup := _make_broker()
 	var root: Node3D = setup[0]
 	var body: CharacterBody3D = setup[1]
 	var broker: Node = setup[2]
-	var movement_broker: Node = setup[4]
-	var strike_motor: Node = setup[5]
+	var movement_broker: Node = setup[3]
+	var strike_motor: Node = setup[4]
 
 	body.global_position = Vector3.ZERO
 
@@ -178,7 +189,7 @@ func test_monkey_strike_snapping_to_target():
 
 	strike_motor.tick(0.016, intents, body, null, mock_services)
 	assert_true(body.velocity.z < 0.0, "Velocity should point towards target (negative Z)")
-	
+
 	body.global_position = Vector3(0, 0, -2.4)
 	strike_motor.tick(0.016, intents, body, null, mock_services)
 	assert_false(strike_motor._active, "StrikeMotor should deactivate when close enough")

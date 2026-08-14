@@ -13,8 +13,8 @@ func _ready() -> void:
 	set_physics_process(false)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	
-	_camera_rig = get_node_or_null("../../CameraRig")
-	_camera_3d = get_node_or_null("../../CameraRig/Lens/Camera3D")
+	_camera_rig = get_node_or_null("%CameraRig")
+	_camera_3d = get_node_or_null("%Camera3D")
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -74,13 +74,7 @@ func get_intents() -> Intents:
 		intents.wants_vault = true
 	if Input.is_key_pressed(KEY_CTRL):
 		intents.wants_sneak = true
-	if Input.is_action_just_pressed("form_panther"):
-		intents.wants_form_shift = &"panther"
-	if Input.is_action_just_pressed("form_monkey"):
-		intents.wants_form_shift = &"monkey"
-	if Input.is_action_just_pressed("form_avian"):
-		intents.wants_form_shift = &"avian"
-	
+
 	if _camera_3d:
 		intents.aim_origin = _camera_3d.global_position
 		intents.aim_direction = (-_camera_3d.global_transform.basis.z).normalized()

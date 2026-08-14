@@ -24,7 +24,6 @@ func test_default_values():
 	assert_false(subject.wants_mantle, "wants_mantle should be false")
 	assert_false(subject.wants_vault, "wants_vault should be false")
 	assert_false(subject.wants_glide, "wants_glide should be false")
-	assert_eq(subject.wants_form_shift, &"", "wants_form_shift should be empty")
 	assert_false(subject.wants_attack, "wants_attack should be false")
 	assert_false(subject.wants_parry, "wants_parry should be false")
 	assert_false(subject.wants_archery_aim, "wants_archery_aim should be false")
@@ -46,14 +45,12 @@ func test_field_assignment():
 	subject.move_dir = Vector2.UP
 	subject.wants_jump = true
 	subject.input_strength = 0.8
-	subject.wants_form_shift = &"monkey"
 	subject.wants_attack = true
 	subject.aim_direction = Vector3.FORWARD
-	
+
 	assert_eq(subject.move_dir, Vector2.UP, "move_dir assignment failed")
 	assert_true(subject.wants_jump, "wants_jump assignment failed")
 	assert_eq(subject.input_strength, 0.8, "input_strength assignment failed")
-	assert_eq(subject.wants_form_shift, &"monkey", "wants_form_shift assignment failed")
 	assert_true(subject.wants_attack, "wants_attack assignment failed")
 	assert_eq(subject.aim_direction, Vector3.FORWARD, "aim_direction assignment failed")
 
@@ -70,7 +67,6 @@ func test_reset_clears_all_fields():
 	subject.wants_mantle = true
 	subject.wants_vault = true
 	subject.wants_glide = true
-	subject.wants_form_shift = &"avian"
 	subject.wants_attack = true
 	subject.wants_parry = true
 	subject.wants_archery_aim = true
@@ -93,7 +89,6 @@ func test_reset_clears_all_fields():
 	assert_false(subject.wants_mantle, "wants_mantle should be reset")
 	assert_false(subject.wants_vault, "wants_vault should be reset")
 	assert_false(subject.wants_glide, "wants_glide should be reset")
-	assert_eq(subject.wants_form_shift, &"", "wants_form_shift should be reset")
 	assert_false(subject.wants_attack, "wants_attack should be reset")
 	assert_false(subject.wants_parry, "wants_parry should be reset")
 	assert_false(subject.wants_archery_aim, "wants_archery_aim should be reset")

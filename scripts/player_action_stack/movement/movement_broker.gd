@@ -9,13 +9,12 @@ signal physics_tick_complete(intents: Intents, current_mode: int)
 ## convention; other entities override this to point at their own Brain.
 @export var brain_path: NodePath = NodePath("../PlayerBrain")
 @onready var _brain: Node = get_node_or_null(brain_path)
-@onready var _body: CharacterBody3D = get_node_or_null("../Body")
-@onready var _stamina: StaminaComponent = get_node_or_null("../StaminaComponent")
-@onready var _ground_service: GroundService = get_node_or_null("../Services/GroundService")
-@onready var _ledge_service: LedgeService = get_node_or_null("../Services/LedgeService")
-@onready var _stairs_service: StairsService = get_node_or_null("../Services/StairsService")
-@onready var _ladder_service: LadderService = get_node_or_null("../Services/LadderService")
-@onready var _form_broker: Node = get_node_or_null("../FormBroker")
+@onready var _body: CharacterBody3D = get_node_or_null("%Body")
+@onready var _stamina: StaminaComponent = get_node_or_null("%StaminaComponent")
+@onready var _ground_service: GroundService = get_node_or_null("%GroundService")
+@onready var _ledge_service: LedgeService = get_node_or_null("%LedgeService")
+@onready var _stairs_service: StairsService = get_node_or_null("%StairsService")
+@onready var _ladder_service: LadderService = get_node_or_null("%LadderService")
 
 var _motors: Dictionary = {}
 var _services: Array[BaseService] = []
@@ -55,7 +54,7 @@ func inject_forced_proposal(proposal: TransitionProposal) -> void:
 
 func _ready() -> void:
 	if _brain == null:
-		push_warning("MovementBroker: brain_path '%s' no resuelve — la entidad no tendra input" % brain_path)
+		push_warning("brain_path '%s' does not resolve — entity has no input" % brain_path)
 	_body_reader = BodyReader.new(_body)
 	_loco_state = LocomotionState.new()
 	_state_reader = LocomotionStateReader.new(_loco_state)
@@ -108,8 +107,6 @@ func _guess_state_id(motor_name: String) -> int:
 
 func _physics_process(delta: float) -> void:
 	var intents: Intents = _brain.get_intents() if _brain and _brain.has_method("get_intents") else Intents.new()
-	if _form_broker and _form_broker.has_method("tick"):
-		_form_broker.tick(intents, delta)
 
 	for s in _services:
 		if s.has_method("update_facts"):

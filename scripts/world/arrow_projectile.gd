@@ -77,7 +77,7 @@ func _hit_target(hit: Dictionary) -> void:
 			_source,
 			target,
 			_damage,
-			&"avian_arrow",
+			&"arrow",
 			&"light",
 			hit.get("position", global_position)
 		)

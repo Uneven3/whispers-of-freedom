@@ -3,7 +3,7 @@ extends Node
 
 # — Configuration —
 @export var strike_range: float = 6.0             # Max distance to acquire a snapping target
-@export var strike_damage: float = 20.0           # Base damage for a standard Monkey Strike
+@export var strike_damage: float = 20.0           # Base damage for a standard strike
 @export var hit_pause_scale: float = 0.05         # Time scale for the hitpause effect
 @export var hit_pause_duration: float = 0.06      # Duration of the hitpause effect
 @export var stamina_drain_on_strike: float = 5.0  # Stamina cost per attack
@@ -18,6 +18,12 @@ func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
 
+## Lets CombatBroker prioritize other actions on a fresh input without
+## interrupting a dash/cooldown that already started (§17 concern: silently
+## dropping a swing mid-flight would feel like a bug, not a design choice).
+func is_in_progress() -> bool:
+	return _strike_in_progress or _strike_cooldown > 0.0
+
 func tick(intents: Intents, delta: float, broker: Node) -> void:
 	var cb := broker as CombatBroker
 	if not cb:
@@ -31,7 +37,7 @@ func tick(intents: Intents, delta: float, broker: Node) -> void:
 			if _target_node and is_instance_valid(_target_node):
 				var dist: float = cb.get_body_reader().get_global_position().distance_to(_target_node.global_position)
 				if dist <= 2.8:
-					cb.apply_damage(_target_node, strike_damage, &"monkey_strike", &"light", _target_node.global_position)
+					cb.apply_damage(_target_node, strike_damage, &"strike", &"light", _target_node.global_position)
 					cb.trigger_hit_pause(hit_pause_scale, hit_pause_duration)
 					cb.set_combat_state(&"strike_hit")
 				else:

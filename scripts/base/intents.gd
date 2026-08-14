@@ -45,7 +45,6 @@ var wants_climb: bool = false
 var wants_mantle: bool = false
 var wants_vault: bool = false
 var wants_glide: bool = false
-var wants_form_shift: StringName = &""
 var wants_attack: bool = false
 var wants_parry: bool = false
 var wants_archery_aim: bool = false
@@ -67,7 +66,6 @@ func reset() -> void:
 	wants_mantle = false
 	wants_vault = false
 	wants_glide = false
-	wants_form_shift = &""
 	wants_attack = false
 	wants_parry = false
 	wants_archery_aim = false

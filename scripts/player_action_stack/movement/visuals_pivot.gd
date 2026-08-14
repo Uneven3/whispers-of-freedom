@@ -1,7 +1,7 @@
 extends Node3D
 
 @export var interpolation_speed: float = 20.0
-@onready var _body: CharacterBody3D = $"../Body"
+@onready var _body: CharacterBody3D = get_node_or_null("%Body")
 @onready var _mesh: MeshInstance3D = $MeshInstance3D
 var _target_y_offset: float = 0.0
 var _state_reader: LocomotionStateReader
@@ -10,28 +10,27 @@ var _base_mesh_scale: Vector3 = Vector3.ONE
 # — Weapon & VFX —
 var _staff: MeshInstance3D = null
 var _swing_trail: CPUParticles3D = null
-var _is_monkey: bool = false
 
 func _ready() -> void:
 	set_as_top_level(true)
 	set_physics_process(false)
 	if _mesh:
 		_base_mesh_scale = _mesh.scale
-	var broker = get_node_or_null("../MovementBroker")
+	var broker = get_node_or_null("%MovementBroker")
 	if broker and broker.has_method("get_state_reader"):
 		_state_reader = broker.get_state_reader()
-		
+
 	var combat_broker = get_node_or_null("../CombatBroker")
 	if combat_broker and combat_broker.has_signal("combat_state_changed"):
 		combat_broker.connect("combat_state_changed", _on_combat_state_changed)
-		# Monkey staff + swing VFX are player combat features — only build them on
+		# Weapon + swing VFX are player combat features — only build them on
 		# entities that own a CombatBroker (the horse gets no phantom weapon).
-		_setup_monkey_weapon()
+		_setup_weapon()
 		_setup_swing_vfx()
 
-func _setup_monkey_weapon() -> void:
+func _setup_weapon() -> void:
 	_staff = MeshInstance3D.new()
-	_staff.name = "MonkeyStaff"
+	_staff.name = "Weapon"
 	
 	var staff_mesh := CylinderMesh.new()
 	staff_mesh.top_radius = 0.025
@@ -49,7 +48,7 @@ func _setup_monkey_weapon() -> void:
 	# Default diagonal carry position on back/hand
 	_staff.position = Vector3(0.2, 0.3, -0.3)
 	_staff.rotation_degrees = Vector3(0, 45, 90)
-	_staff.visible = false
+	_staff.visible = true
 
 func _setup_swing_vfx() -> void:
 	_swing_trail = CPUParticles3D.new()
@@ -97,27 +96,7 @@ func _setup_swing_vfx() -> void:
 	_swing_trail.gravity = Vector3.ZERO
 	add_child(_swing_trail)
 
-func apply_form_visual(form_id: StringName, color: Color, scale_multiplier: Vector3) -> void:
-	if not _mesh:
-		return
-	_mesh.scale = Vector3(
-		_base_mesh_scale.x * scale_multiplier.x,
-		_base_mesh_scale.y * scale_multiplier.y,
-		_base_mesh_scale.z * scale_multiplier.z
-	)
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.85
-	_mesh.material_override = material
-	
-	_is_monkey = (form_id == &"monkey")
-	if _staff:
-		_staff.visible = _is_monkey
-
 func _on_combat_state_changed(new_state: StringName) -> void:
-	if not _is_monkey:
-		return
-		
 	# Trigger swing trail VFX and staff rotation animation on strike
 	if new_state in [&"strike_dash", &"strike_swing"]:
 		_trigger_swing_vfx()

@@ -38,4 +38,3 @@ func test_horse_scene_configuration():
 
 	assert_not_null(controller.get_node("HorseBrain"), "HorseBrain wired")
 	assert_null(controller.get_node_or_null("CombatBroker"), "horse has no combat")
-	assert_null(controller.get_node_or_null("FormBroker"), "horse has no forms")

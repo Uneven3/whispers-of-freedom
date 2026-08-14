@@ -6,12 +6,8 @@ signal aiming_changed(is_aiming: bool)
 signal combat_state_changed(state: StringName)
 
 const DamageEventScript = preload("res://scripts/base/damage_event.gd")
-const FORM_PANTHER: StringName = &"panther"
-const FORM_MONKEY: StringName = &"monkey"
-const FORM_AVIAN: StringName = &"avian"
 
 var _body_reader: BodyReader
-var _form_reader: RefCounted
 var _stamina: Node
 var _projectile_parent: Node
 var _movement_broker: Node
@@ -21,7 +17,7 @@ var _last_hit: RefCounted
 
 @onready var _bow_action: Node = get_node_or_null("BowAction")
 @onready var _parry_action: Node = get_node_or_null("ParryCounterAction")
-@onready var _takedown_action: Node = get_node_or_null("PantherTakedownAction")
+@onready var _takedown_action: Node = get_node_or_null("TakedownAction")
 @onready var _strike_action: Node = get_node_or_null("StrikeAction")
 @onready var _hit_pause: Node = get_node_or_null("HitPauseComponent")
 
@@ -31,41 +27,42 @@ func _ready() -> void:
 
 func configure(
 	body_reader: BodyReader,
-	form_reader: RefCounted,
 	stamina: Node,
 	projectile_parent: Node,
 	movement_broker: Node = null
 ) -> void:
 	_body_reader = body_reader
-	_form_reader = form_reader
 	_stamina = stamina
 	_projectile_parent = projectile_parent
 	_movement_broker = movement_broker
 
+## Single character, full moveset — every action is always available, so this
+## picks exactly one to run per frame instead of relying on tick order:
+## an in-progress strike always resolves first (never interrupted mid-swing),
+## then aim/bow, then takedown, then parry, then a fresh strike. Without this,
+## e.g. releasing an aimed shot (wants_archery_release) also sets wants_attack
+## true the same frame and would double as a melee swing.
 func tick(intents: Intents, delta: float) -> void:
 	if not intents:
 		return
-	var form_id := get_current_form()
-	set_aiming(form_id == FORM_AVIAN and intents.wants_archery_aim)
-	match form_id:
-		FORM_AVIAN:
-			if _bow_action and _bow_action.has_method("tick"):
-				_bow_action.tick(intents, delta, self)
-		FORM_MONKEY:
-			if _strike_action and _strike_action.has_method("tick"):
-				_strike_action.tick(intents, delta, self)
-			if _parry_action and _parry_action.has_method("tick"):
-				_parry_action.tick(intents, delta, self)
-		FORM_PANTHER:
-			if _takedown_action and _takedown_action.has_method("tick"):
-				_takedown_action.tick(intents, delta, self)
-		_:
-			set_combat_state(&"idle")
-
-func get_current_form() -> StringName:
-	if _form_reader and _form_reader.has_method("get_current_form"):
-		return _form_reader.get_current_form()
-	return FORM_PANTHER
+	set_aiming(intents.wants_archery_aim)
+	if _strike_action and _strike_action.has_method("is_in_progress") and _strike_action.is_in_progress():
+		_strike_action.tick(intents, delta, self)
+		return
+	if intents.wants_archery_aim or intents.wants_archery_release:
+		if _bow_action and _bow_action.has_method("tick"):
+			_bow_action.tick(intents, delta, self)
+		return
+	if intents.wants_assassinate:
+		if _takedown_action and _takedown_action.has_method("tick"):
+			_takedown_action.tick(intents, delta, self)
+		return
+	if intents.wants_parry:
+		if _parry_action and _parry_action.has_method("tick"):
+			_parry_action.tick(intents, delta, self)
+		return
+	if _strike_action and _strike_action.has_method("tick"):
+		_strike_action.tick(intents, delta, self)
 
 func get_body_reader() -> BodyReader:
 	return _body_reader

@@ -10,9 +10,9 @@ var _body: CharacterBody3D = null
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
-	_body = get_node_or_null("../../Body") as CharacterBody3D
+	_body = get_node_or_null("%Body") as CharacterBody3D
 	if _body == null:
-		push_warning("LadderService: could not locate sibling Body — ladders disabled.")
+		push_warning("could not locate sibling Body — ladders disabled")
 		return
 	call_deferred("_connect_ladders")
 
