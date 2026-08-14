@@ -1,16 +1,7 @@
 [gd_scene format=3 uid="uid://dg3upyr3mv2pg"]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="player_scene"]
-
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
-
-[sub_resource type="Sky" id="Sky_sky"]
-sky_material = SubResource("ProceduralSkyMaterial_sky")
-
-[sub_resource type="Environment" id="Environment_env"]
-background_mode = 2
-sky = SubResource("Sky_sky")
-tonemap_mode = 2
+[ext_resource type="Terrain3DAssets" path="res://world_data/terrain/terrain_assets.tres" id="terrain_assets"]
 
 [sub_resource type="Gradient" id="Gradient_0m0jd"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -54,34 +45,22 @@ _shader_parameters = {
 }
 show_checkered = true
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_n761j"]
-transparency = 4
-cull_mode = 2
-vertex_color_use_as_albedo = true
-backlight_enabled = true
-backlight = Color(0.5, 0.5, 0.5, 1)
-distance_fade_mode = 1
-distance_fade_min_distance = 128.0
-distance_fade_max_distance = 96.0
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 
-[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_0p7y4"]
-generated_type = 1
-height_offset = 0.5
-material_override = SubResource("StandardMaterial3D_n761j")
-last_lod = 0
-last_shadow_lod = 0
-lod0_range = 128.0
+[sub_resource type="Sky" id="Sky_sky"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
 
-[sub_resource type="Terrain3DAssets" id="Terrain3DAssets_of1tv"]
-mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_0p7y4")])
+[sub_resource type="Environment" id="Environment_env"]
+background_mode = 2
+sky = SubResource("Sky_sky")
+tonemap_mode = 2
 
 [node name="TerrainBase" type="Node3D" unique_id=2115050772]
 
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=376795420]
-groups=["terrain"]
 data_directory = "res://world_data/terrain"
 material = SubResource("Terrain3DMaterial_ekjg4")
-assets = SubResource("Terrain3DAssets_of1tv")
+assets = ExtResource("terrain_assets")
 show_checkered = true
 top_level = true
 metadata/_edit_lock_ = true
@@ -89,9 +68,9 @@ metadata/_edit_lock_ = true
 [node name="Player" parent="." unique_id=406302133 instance=ExtResource("player_scene")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2094110343]
 transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0, 10, 0)
 shadow_enabled = true
 
-[node name="Environment" type="WorldEnvironment" parent="."]
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=534968569]
 environment = SubResource("Environment_env")
