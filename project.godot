@@ -20,7 +20,7 @@ DebugOverlay="*res://scripts/debug_overlay.gd"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/terrain_3d/plugin.cfg")
 
 [input]
 

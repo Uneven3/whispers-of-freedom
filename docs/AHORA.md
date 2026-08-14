@@ -23,6 +23,16 @@ la bitácora viva de acá en adelante.
   hasta jugarlo contra su feel contract. Antes de cerrar algo acá: correr el
   suite, abrir la escena principal y jugar el checklist relevante.
 - Commits pequeños, sin push sin pedido explícito.
+- **Terrain3D no está versionado** (`addons/terrain_3d/` en `.gitignore` —
+  son ~52MB de binarios por plataforma, no vale la pena en el historial).
+  Instalar local antes de abrir el proyecto: descargar
+  `Terrain3D_v1.0.2-stable.zip` de
+  [github.com/TokisanGames/Terrain3D/releases](https://github.com/TokisanGames/Terrain3D/releases)
+  (confirmado compatible con Godot 4.7.1 aunque el release sólo declara
+  "4.4-4.6+"; `terrain.gdextension` fija `compatibility_minimum = 4.4` sin
+  techo), descomprimir en la raíz del repo (crea `addons/terrain_3d/`).
+  `project.godot` ya lo lista en `editor_plugins/enabled` — sólo hace falta
+  que el archivo exista en disco.
 
 ## Pivote 2026-08-14 (ver `NORTE.md`) — ejecutado
 

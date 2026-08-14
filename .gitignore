@@ -14,3 +14,7 @@ data_*/
 # Exported builds
 export/
 build/
+
+# GDExtension plugins installed locally, not versioned (binaries) — see
+# "Cómo trabajar en este repo" en docs/AHORA.md para instalarlos.
+addons/terrain_3d/
