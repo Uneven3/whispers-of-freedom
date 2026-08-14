@@ -1,3 +1,4 @@
+@tool
 class_name SpawnSnap
 extends Node
 
@@ -19,21 +20,52 @@ extends Node
 ## the capsule's half-height on top, read from BodyReader
 ## (get_body_half_height()) instead of re-deriving capsule math here — same
 ## single-source-of-truth BodyReader that motors/services already use.
+##
+## @tool so this previews live in the editor too — see _queue_snap(). If
+## MovementBroker's own script isn't @tool (it isn't), get_body_reader()
+## has nothing to return while editing, so half-height falls back to
+## _DEFAULT_HALF_HEIGHT there; only the running game reads the real capsule.
 
 ## Relative to this node's parent (the Player root) — matches brain_path's
 ## own pattern (movement_broker.gd) of a NodePath default that already
 ## matches player.tscn's real layout.
-@export var body_reader_source: NodePath = NodePath("../EntityController/MovementBroker")
-@export var clearance: float = 0.5
+@export var body_reader_source: NodePath = NodePath("../EntityController/MovementBroker"):
+	set(value):
+		body_reader_source = value
+		_queue_snap()
+@export var clearance: float = 0.5:
+	set(value):
+		clearance = value
+		_queue_snap()
+
+@export_tool_button("Snap to terrain now")
+var snap_now_action: Callable = _snap_to_terrain
 
 ## Matches BodyReader's own fallback when no capsule shape is found.
 const _DEFAULT_HALF_HEIGHT: float = 1.0
 
+var _ready_done: bool = false
+var _snap_queued: bool = false
+
 func _ready() -> void:
+	_ready_done = true
 	# One frame so a sibling Terrain3D (loaded earlier or later in tree order)
 	# has finished loading its regions, and MovementBroker has built its
 	# BodyReader, before we query either.
 	await get_tree().process_frame
+	_snap_to_terrain()
+
+## Debounces Inspector edits (Godot sets every exported var once while
+## deserializing the scene, before _ready runs) into a single snap —
+## same pattern as GrassField._queue_rebuild().
+func _queue_snap() -> void:
+	if not _ready_done or _snap_queued:
+		return
+	_snap_queued = true
+	_snap_to_terrain.call_deferred()
+
+func _snap_to_terrain() -> void:
+	_snap_queued = false
 	var terrain: Node = get_tree().get_first_node_in_group("terrain")
 	if terrain == null:
 		return

@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dg3upyr3mv2pg"]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="player_scene"]
-[ext_resource type="Terrain3DAssets" path="res://world_data/terrain/terrain_assets.tres" id="terrain_assets"]
+[ext_resource type="Terrain3DAssets" uid="uid://dghomehnyosl6" path="res://world_data/terrain/terrain_assets.tres" id="terrain_assets"]
 
 [sub_resource type="Gradient" id="Gradient_0m0jd"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -57,7 +57,7 @@ tonemap_mode = 2
 
 [node name="TerrainBase" type="Node3D" unique_id=2115050772]
 
-[node name="Terrain3D" type="Terrain3D" parent="." unique_id=376795420]
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=376795420 groups=["terrain"]]
 data_directory = "res://world_data/terrain"
 material = SubResource("Terrain3DMaterial_ekjg4")
 assets = ExtResource("terrain_assets")
