@@ -5,7 +5,8 @@
 Wild** sin nada de la IP de Zelda: mundo, historia, razas y assets propios.
 Mismo norte que el proyecto hermano en Bevy/Rust, `breath-of-freedom`
 (`docs/reference/breath-of-freedom/NORTE.md`), adaptado a Godot. (≤200
-líneas; visión. Táctico en `AHORA.md`, reglas en `ARCHITECTURE.md`.)
+líneas; visión. Táctico en `AHORA.md`, reglas en `ARCHITECTURE.md`, catálogo
+de sistemas mapeados a Godot en `SISTEMAS.md`.)
 
 **Pivote 2026-08-14:** se descarta la premisa previa (*Druid:
 Shape-Shifter's Ritual* — shapeshifting Panther/Monkey/Avian, corrupción
@@ -67,6 +68,9 @@ queda obsoleto por esto en `AHORA.md`.
 - Música ambiental minimalista; SFX estilizados.
 
 ## Mecánicas (orden de prioridad; ✅/⏳ refleja el código real, ver `AHORA.md`)
+
+Para cada mecánica ⏳, `SISTEMAS.md` ya tiene el mapeo a nodos/plugins de
+Godot concretos — no hay que rediseñar cuando toque implementarla.
 
 1. **Movimiento** ✅ base jugable — walk/sprint/sneak/jump/fall/climb/
    mantle/auto-vault/wall-jump/edge-leap/stairs/ladder/glide. Falta nadar/

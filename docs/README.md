@@ -1,9 +1,10 @@
 # Docs — cómo está organizado esto
 
 **Vivo, autoridad para este proyecto:** `NORTE.md` (visión), `ARCHITECTURE.md`
-(leyes + pipeline), `AHORA.md` (bitácora de trabajo). Documentación lean a
-propósito, ≤1000 líneas en conjunto — el código es el complemento, no hace
-falta duplicar en prosa lo que ya se lee en `scripts/`.
+(leyes + pipeline), `SISTEMAS.md` (catálogo de sistemas mapeados a Godot),
+`AHORA.md` (bitácora de trabajo). Documentación lean a propósito — el código
+es el complemento, no hace falta duplicar en prosa lo que ya se lee en
+`scripts/`.
 
 **`reference/breath-of-freedom/`** — docs de un juego hermano en Bevy/Rust
 (otro motor, no aplica directo a GDScript). Referencia de disciplina de
