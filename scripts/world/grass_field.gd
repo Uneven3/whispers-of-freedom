@@ -147,10 +147,73 @@ func _build_field() -> void:
 	_mmi.custom_aabb = AABB(Vector3(-field_radius, 0.0, -field_radius), Vector3(field_radius * 2.0, max_blade_height, field_radius * 2.0))
 	add_child(_mmi)
 
-## A single crossed-quad blade (two thin planes) from primitives — graybox has
-## no textures, so the shader colors it. Crossed quads read as grass from any
-## angle without needing billboarding.
+## Blender-authored crossed-leaf blade (two crossed planes, pointed at tip and
+## sunk base, waist row at 30% height — see tools/blender/generate_grass_blade.py
+## and art/blender/grass/grass_blade.blend). Cached per-process since the base
+## shape never changes between Inspector rebuilds — only max_blade_height does.
+const BLADE_ASSET_PATH := "res://art/blender/grass/grass_blade.blend"
+static var _cached_base_mesh: ArrayMesh
+static var _load_failed: bool = false
+
 func _build_blade_mesh() -> Mesh:
+	var base := _load_base_blade_mesh()
+	if base == null:
+		return _build_fallback_blade_mesh()
+	return _rescaled_blade_mesh(base, max_blade_height)
+
+## Loads and caches the unit-height (1.0 m) blade mesh from the .blend asset.
+## Returns null (and warns once) if the asset can't be loaded — e.g. Blender's
+## path isn't configured in Editor Settings > Filesystem > Import > Blender on
+## this machine (see "Cómo trabajar en este repo" in docs/AHORA.md).
+func _load_base_blade_mesh() -> ArrayMesh:
+	if _cached_base_mesh or _load_failed:
+		return _cached_base_mesh
+	var packed: PackedScene = load(BLADE_ASSET_PATH)
+	if packed == null:
+		_load_failed = true
+		push_warning("could not load '%s' — falling back to the procedural blade (configure Editor Settings > Filesystem > Import > Blender > Blender Path, see docs/AHORA.md)" % BLADE_ASSET_PATH)
+		return null
+	var inst := packed.instantiate()
+	var mesh_node := _find_mesh_instance(inst)
+	if mesh_node == null or mesh_node.mesh == null:
+		_load_failed = true
+		push_warning("'%s' has no usable MeshInstance3D — falling back to the procedural blade" % BLADE_ASSET_PATH)
+		inst.free()
+		return null
+	_cached_base_mesh = mesh_node.mesh as ArrayMesh
+	inst.free()
+	return _cached_base_mesh
+
+func _find_mesh_instance(node: Node) -> MeshInstance3D:
+	if node is MeshInstance3D:
+		return node
+	for child in node.get_children():
+		var found := _find_mesh_instance(child)
+		if found:
+			return found
+	return null
+
+## Rescales the unit-height base mesh's Y axis to max_blade_height and applies
+## the wind ShaderMaterial — width/taper stay exactly as authored in Blender.
+func _rescaled_blade_mesh(base: ArrayMesh, height: float) -> ArrayMesh:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/world/grass_blade.gdshader")
+	var out := ArrayMesh.new()
+	for i in base.get_surface_count():
+		var arrays := base.surface_get_arrays(i)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		for j in verts.size():
+			verts[j] = Vector3(verts[j].x, verts[j].y * height, verts[j].z)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(base.surface_get_primitive_type(i), arrays)
+		out.surface_set_material(i, mat)
+	return out
+
+## Fallback used only when the Blender asset can't be loaded (see
+## _load_base_blade_mesh) — the original flat-rectangle crossed quad, so a
+## machine without Blender configured still gets a playable (if plainer) field
+## instead of a crash.
+func _build_fallback_blade_mesh() -> Mesh:
 	var blade := ArrayMesh.new()
 	var h := max_blade_height
 	var w := 0.08
@@ -165,7 +228,6 @@ func _build_blade_mesh() -> Mesh:
 		Vector3(0, 0, -w), Vector3(0, 0, w), Vector3(0, h, w), Vector3(0, h, -w)
 	))
 
-	var idx := 0
 	for verts: Array in surfaces:
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
@@ -173,7 +235,6 @@ func _build_blade_mesh() -> Mesh:
 		# Two triangles per quad, counter-clockwise facing out.
 		arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
 		blade.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		idx += 1
 
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/world/grass_blade.gdshader")

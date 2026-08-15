@@ -89,6 +89,31 @@ func test_blade_count_rebuilds_live_after_ready():
 	var mmi: MultiMeshInstance3D = field.get_node("Grass")
 	assert_eq(mmi.multimesh.instance_count, 500, "editing an export var after _ready rebuilds without a scene restart")
 
+func test_blade_mesh_uses_the_blender_authored_asset():
+	var field := _build_field()
+	var mmi: MultiMeshInstance3D = field.get_node("Grass")
+	var mesh: ArrayMesh = mmi.multimesh.mesh
+	assert_eq(mesh.get_surface_count(), 1, "Blender asset is a single crossed-leaf mesh, not the 2-surface fallback")
+
+func test_blade_height_scales_with_max_blade_height():
+	var field := _build_field()
+	field.max_blade_height = 2.0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mmi: MultiMeshInstance3D = field.get_node("Grass")
+	var arrays := mmi.multimesh.mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var max_y := 0.0
+	for v: Vector3 in verts:
+		max_y = maxf(max_y, v.y)
+	assert_almost_eq(max_y, 2.0, 0.01, "blade tip height should follow max_blade_height")
+
+func test_fallback_blade_mesh_is_still_valid_if_asset_missing():
+	var field := _build_field()
+	var mesh: ArrayMesh = field._build_fallback_blade_mesh()
+	assert_eq(mesh.get_surface_count(), 2, "fallback is the flat crossed-quad, 2 surfaces")
+	assert_not_null(mesh.surface_get_material(0), "fallback still carries the wind shader material")
+
 func test_grass_field_scene_loads_with_player():
 	var ps: PackedScene = load("res://scenes/grass_field.tscn")
 	assert_not_null(ps, "grass_field.tscn should load")

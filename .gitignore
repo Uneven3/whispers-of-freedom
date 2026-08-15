@@ -18,3 +18,6 @@ build/
 # GDExtension plugins installed locally, not versioned (binaries) — see
 # "Cómo trabajar en este repo" en docs/AHORA.md para instalarlos.
 addons/terrain_3d/
+
+# Blender auto-save backups (source .blend files under art/ are versioned).
+*.blend1

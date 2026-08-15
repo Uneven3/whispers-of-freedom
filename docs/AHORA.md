@@ -33,6 +33,20 @@ la bitácora viva de acá en adelante.
   techo), descomprimir en la raíz del repo (crea `addons/terrain_3d/`).
   `project.godot` ya lo lista en `editor_plugins/enabled` — sólo hace falta
   que el archivo exista en disco.
+- **Assets Blender (`art/blender/`) se importan nativo, sin exportar a
+  `.glb` a mano** — Godot invoca a Blender headless por su cuenta. Hace
+  falta `Editor Settings → Filesystem → Import → Blender → Blender Path`
+  apuntando al binario local (`/usr/bin/blender` acá; setting de editor, no
+  versionado — mismo patrón que Terrain3D arriba). Sin eso configurado, el
+  `.blend` no importa y el código que lo usa cae a un fallback en vez de
+  crashear (ver `grass_field.gd::_load_base_blade_mesh()`), pero conviene
+  configurarlo para ver el asset real. Tras clonar o pulear, correr una vez
+  `godot --headless --editor --import` para forzar el reimport antes de
+  abrir el proyecto normalmente. **Ojo:** ese comando (cualquier invocación
+  con `--editor`) puede reescribir archivos abiertos en una sesión de editor
+  cacheada de antes (ej. reindentó `ARCHITECTURE.md` de espacios a tabs sin
+  que nadie lo pidiera) — correr `git status`/`git diff` después y revertir
+  lo que no se pidió, antes de commitear.
 
 ## Pivote 2026-08-14 (ver `NORTE.md`) — ejecutado
 
@@ -203,6 +217,64 @@ una escalera y una escalera de mano reales, y pegarle a un `CombatDummy` con
 las 4 acciones, para confirmar que el arreglo del guard no cambió el feel de
 nada que ya andaba.
 
+## Brizna modelada en Blender, 2026-08-15 (misma sesión)
+
+Pedido explícito: mejorar la malla de la brizna "con estándar de industria,
+low poly", hecha con Blender + Python en vez de a mano en GDScript, como
+ejercicio para aprender del modelo resultante. Ejecutado con
+`/iterate-safely`: plan (geometría + pipeline de import) → crítica de un
+subagente sin contexto → triage → ejecución, con dos verificaciones
+empíricas contra el motor real antes de escribir el plan final (no
+asumidas): que Godot puede importar un `.blend` nativo headless
+(`godot --headless --editor --import`, ver bullet nuevo arriba) y, ya
+ejecutando, que la primera versión de la geometría estaba tumbada de costado
+(construida con la altura en el eje Y en vez de Z — Blender es Z-arriba
+nativo, no Y — corregido y confirmado con un render de control antes de
+integrarla).
+
+**Geometría:** `tools/blender/generate_grass_blade.py` (bpy, corrido
+headless) reemplaza el quad-cruzado rectangular de
+`grass_field.gd::_build_blade_mesh()` (dos planos perpendiculares, 4
+vértices/2 triángulos cada uno, ancho fijo) por la forma de "hoja"
+investigada y medida en el proyecto hermano `breath-of-freedom`
+(`docs/BOTWGrass.md`, sección "La brizna: dos triángulos unidos por una
+arista horizontal"): cada plano termina en punta arriba y abajo (la punta de
+abajo hundida 6 cm bajo el suelo, no infinitamente angosta contra la
+tierra), con una fila de vértices media ("cintura") a 0,30 de la altura —
+sin esa fila la brizna no puede arquearse con el viento, el borde va recto
+de raíz a punta. **Mismo presupuesto de triángulos que antes** (4/instancia,
+2 planos × 2 triángulos) — sólo cambia el perfil, no la arquitectura del
+campo ni el shader de viento (`grass_blade.gdshader`, que ya sólo depende de
+`VERTEX.y` local, sin UVs — verificado antes de tocar la geometría).
+
+**Pipeline, deliberadamente distinto al del proyecto hermano:** breath-of-
+freedom exporta a `.glb` con un validador de nomenclatura específico de Bevy
+(`SM_/SK_/ROOT_/bof_*`) que no aplica acá — pedido explícito del usuario
+("pensá uno mejor que se adapte a Godot") tras leer ese pipeline. Acá Godot
+importa el `.blend` directo y nativo (`art/blender/grass/grass_blade.blend`,
+versionado — es chico, sin texturas). El generador también renderiza un PNG
+de control (`art/blender/grass/grass_blade_preview.png`) sin abrir Blender
+ni Godot, para poder mirar la forma antes de integrarla.
+
+**Integración en `grass_field.gd`:** `_load_base_blade_mesh()` carga y
+cachea (`static var`, una vez por proceso — evita reinstanciar la escena
+importada en cada rebuild del Inspector) la malla base a altura unitaria
+(1,0 m); `_rescaled_blade_mesh()` reescala sólo el eje Y por
+`max_blade_height` para no perder ese knob del Inspector. **Si el `.blend`
+no importó** (máquina sin `Blender Path` configurado, ver bullet arriba) cae
+a `_build_fallback_blade_mesh()` — el rectángulo viejo, no un crash —
+verificado de verdad simulando el clon fresco (moviendo el `.blend` y su
+caché de import fuera del proyecto y confirmando que el campo se sigue
+construyendo, con warning y sin error).
+
+**Validado headless, no jugado (§17):** 92/92 tests (3 nuevos:
+`test_blade_mesh_uses_the_blender_authored_asset`,
+`test_blade_height_scales_with_max_blade_height`,
+`test_fallback_blade_mesh_is_still_valid_if_asset_missing`), 5 escenas
+cargan sin error. El render de control confirma la silueta pero **no
+reemplaza verlo en el campo real** con viento, densidad e iluminación —
+pendiente jugarlo antes de dar esto por terminado.
+
 ## Estado del código, al 2026-08-14
 
 Validado headless: 79/79 tests, 5 escenas cargan sin errores
@@ -238,18 +310,19 @@ separadas, no una migró a la otra todavía.
 Movement y Combat vía `BaseDebugContext`/`panel_key`, mismo panel, hacen
 merge (ver auditoría arriba — antes se pisaban).
 
-**Tests: 23 archivos, 89 tests, 89/89 en verde** (`godot --headless -s
+**Tests: 24 archivos, 92 tests, 92/92 en verde** (`godot --headless -s
 addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15).
 5 escenas cargan headless sin errores (`godot --headless --quit-after`).
 **Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
-particular, y los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`
-del 2026-08-15, todavía no se jugaron, sólo se verificaron headless.
+particular, los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`,
+y la brizna modelada en Blender, todos del 2026-08-15, todavía no se
+jugaron, sólo se verificaron headless.
 
 **Git:** repo inicializado 2026-08-14; sesión del 14 (terreno + fix de
 `EntityController` + auditoría de `player_action_stack/`) quedó en 9 commits
 sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
-`scripts/world/`+`debug_overlay.gd`. Sin pushear todavía — hace el push la
-persona, no el asistente.
+`scripts/world/`+`debug_overlay.gd` y la brizna modelada en Blender. Sin
+pushear todavía — hace el push la persona, no el asistente.
 
 ## Próximo foco (propuesto, no comprometido)
 
@@ -259,8 +332,9 @@ persona, no el asistente.
    eso primero antes de asumir que algo nuevo está roto.
 2. **Jugar la caja completa** — movimiento, las 4 acciones de combate (con
    stamina real ahora), horse, escaleras/escalera de mano y `CombatDummy`
-   tras los fixes de hoy — nada de esto se verificó jugado todavía, sólo
-   headless.
+   tras los fixes de hoy, y **mirar la brizna nueva en el campo real** (viento,
+   densidad, luz — el render de control sólo mostró la silueta aislada) —
+   nada de esto se verificó jugado todavía, sólo headless.
 3. Corregir la violación de §14 en `strike_action.gd` (llama
    `inject_forced_proposal()` directo en vez de señal-hacia-arriba +
    `EntityController` reenvía) — antes de que otro sistema copie el patrón.
