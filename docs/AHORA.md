@@ -47,6 +47,14 @@ la bitácora viva de acá en adelante.
   cacheada de antes (ej. reindentó `ARCHITECTURE.md` de espacios a tabs sin
   que nadie lo pidiera) — correr `git status`/`git diff` después y revertir
   lo que no se pidió, antes de commitear.
+- **`tools/grass_density_probe.gd`**: compara variantes de brizna por
+  píxeles-de-silueta-por-triángulo (misma técnica que `breath-of-freedom`
+  usó para su pradera — no hay tool nativo de Godot para esto, `Performance`
+  mide la escena entera y "Overdraw" es visual, no scripteable). Necesita
+  pantalla real, **no** `--headless` (el driver dummy no rasteriza nada):
+  `godot --path . -s tools/grass_density_probe.gd`. Guarda capturas en
+  `/tmp/grass_density_probe/` para revisar a ojo — el número solo no alcanza,
+  dos vistas (pájaro/altura de jugador) pueden favorecer variantes distintas.
 
 ## Pivote 2026-08-14 (ver `NORTE.md`) — ejecutado
 
@@ -429,6 +437,16 @@ sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
 `scripts/world/`+`debug_overlay.gd`, la brizna modelada en Blender, y las
 dos variantes comparables (simple/mata) + la investigación de LOD que quedó
 pendiente. Sin pushear todavía — hace el push la persona, no el asistente.
+
+**Medido con `tools/grass_density_probe.gd`** (2026-08-15, campo chico —
+3000 blades, radio 6m — para que quepa en cuadro): la mata es *menos*
+eficiente por triángulo que la simple en las dos vistas (0,67× a vista de
+pájaro, 0,54× a altura de jugador — paga 2× triángulos por instancia por
+menos de 2× de cobertura), pero las capturas a altura de jugador muestran
+algo que ese número no cuenta: la simple deja huecos grandes y contiguos
+entre briznas cerca de cámara, la mata los cierra casi del todo. Sin
+decidir ganador — capturas en `/tmp/grass_density_probe/` (no versionadas),
+la decisión queda para cuando se juegue de verdad.
 
 ## Próximo foco (propuesto, no comprometido)
 
