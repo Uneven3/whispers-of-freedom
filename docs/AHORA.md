@@ -445,8 +445,31 @@ pájaro, 0,54× a altura de jugador — paga 2× triángulos por instancia por
 menos de 2× de cobertura), pero las capturas a altura de jugador muestran
 algo que ese número no cuenta: la simple deja huecos grandes y contiguos
 entre briznas cerca de cámara, la mata los cierra casi del todo. Sin
-decidir ganador — capturas en `/tmp/grass_density_probe/` (no versionadas),
-la decisión queda para cuando se juegue de verdad.
+decidir ganador — capturas en `/tmp/grass_density_probe/` (no versionadas).
+
+**Jugado de verdad (F5) y el número no coincidió con la sensación**: la
+diferencia simple/mata "no se nota mucho" caminando por
+`grass_comparison.tscn` — la escena de medición estaba aislada (fondo
+negro, campo chico y cerca) y eso exageraba huecos que a densidad real se
+disimulan. Lección §17 de manual. Hipótesis nueva del usuario: la que sí
+vale la pena probar es la *tercera* dirección — una brizna de **un solo
+plano sin cruzar** (2 triángulos, la mitad de la simple). Riesgo conocido y
+deliberado (no descubierto, anotado antes de generarla): un plano sin
+cruzar se vuelve invisible de canto, y la cámara en tercera persona orbita
+todo el tiempo — un screenshot estático no lo puede mostrar, hace falta
+jugarlo con la cámara moviéndose.
+
+**`grass_blade_flat.blend`** (nuevo, `generate_grass_blade_flat.py`, mismo
+`leaf_verts()`/`place_leaf()` compartido, un solo `place_leaf(angle_deg=0)`)
++ **`blade_color`** (nuevo `@export` en `GrassField`, pisa el uniform
+`blade_color` del shader — actualiza el material en el lugar, sin rebuild
+completo, mismo patrón que `cast_shadows`) para distinguir las 3 variantes
+a simple vista: simple=verde (default, sin cambios), plano=azul, mata=
+naranja. `grass_comparison.tscn` ahora instancia las 3 (radio 15 c/u, en
+x=-35/0/35, jugador arrancando en z=25 fuera de los tres campos).
+98/98 tests, 9 escenas cargan sin error. Todavía sin jugar esta variante en
+particular — pendiente mirarla girando cámara cerca, el riesgo específico
+que se está probando.
 
 ## Próximo foco (propuesto, no comprometido)
 

@@ -138,7 +138,33 @@ func test_blade_asset_path_rebuilds_live_after_ready():
 	var verts: PackedVector3Array = field.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	assert_eq(verts.size(), 16, "editing blade_asset_path after _ready rebuilds without a scene restart")
 
-func test_grass_comparison_scene_loads_both_variants():
+func test_flat_blade_mesh_is_a_single_uncrossed_leaf():
+	var field := _build_field()
+	field.blade_asset_path = "res://art/blender/grass/grass_blade_flat.blend"
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var verts: PackedVector3Array = field.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_eq(verts.size(), 4, "flat variant is one leaf (4 verts), not crossed like single (8) or tuft (16)")
+
+func test_blade_color_overrides_the_shader_default():
+	var field := _build_field()
+	field.blade_color = Color(1.0, 0.0, 0.0, 1.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mat: ShaderMaterial = field.get_node("Grass").multimesh.mesh.surface_get_material(0)
+	assert_eq(mat.get_shader_parameter("blade_color"), Color(1.0, 0.0, 0.0, 1.0), "blade_color export reaches the shader uniform")
+
+func test_blade_color_updates_live_without_full_rebuild():
+	var field := _build_field()
+	await get_tree().process_frame
+	var mesh_before: ArrayMesh = field.get_node("Grass").multimesh.mesh
+	field.blade_color = Color(0.0, 0.0, 1.0, 1.0)
+	await get_tree().process_frame
+	var mat: ShaderMaterial = field.get_node("Grass").multimesh.mesh.surface_get_material(0)
+	assert_eq(mat.get_shader_parameter("blade_color"), Color(0.0, 0.0, 1.0, 1.0), "color change applied")
+	assert_eq(field.get_node("Grass").multimesh.mesh, mesh_before, "color-only change updates the material in place, no rebuild")
+
+func test_grass_comparison_scene_loads_all_three_variants():
 	var ps: PackedScene = load("res://scenes/grass_comparison.tscn")
 	assert_not_null(ps, "grass_comparison.tscn should load")
 	var scene := ps.instantiate()
@@ -147,14 +173,30 @@ func test_grass_comparison_scene_loads_both_variants():
 	assert_not_null(scene.get_node_or_null("Player"), "player instanced in comparison scene")
 
 	var single: Node = scene.get_node_or_null("GrassSingle")
+	var flat: Node = scene.get_node_or_null("GrassFlat")
 	var tuft: Node = scene.get_node_or_null("GrassTuft")
 	assert_not_null(single, "single-blade GrassField instanced")
+	assert_not_null(flat, "flat-blade GrassField instanced")
 	assert_not_null(tuft, "tuft-blade GrassField instanced")
 
 	var single_verts: PackedVector3Array = single.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var flat_verts: PackedVector3Array = flat.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var tuft_verts: PackedVector3Array = tuft.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	assert_eq(single_verts.size(), 8, "GrassSingle really uses the single-leaf asset")
+	assert_eq(flat_verts.size(), 4, "GrassFlat really uses the flat asset")
 	assert_eq(tuft_verts.size(), 16, "GrassTuft really uses the tuft asset")
+
+	var single_mat: ShaderMaterial = single.get_node("Grass").multimesh.mesh.surface_get_material(0)
+	var flat_mat: ShaderMaterial = flat.get_node("Grass").multimesh.mesh.surface_get_material(0)
+	var tuft_mat: ShaderMaterial = tuft.get_node("Grass").multimesh.mesh.surface_get_material(0)
+	var colors := [
+		single_mat.get_shader_parameter("blade_color"),
+		flat_mat.get_shader_parameter("blade_color"),
+		tuft_mat.get_shader_parameter("blade_color"),
+	]
+	assert_ne(colors[0], colors[1], "single and flat are tinted differently")
+	assert_ne(colors[0], colors[2], "single and tuft are tinted differently")
+	assert_ne(colors[1], colors[2], "flat and tuft are tinted differently")
 
 func test_grass_field_scene_loads_with_player():
 	var ps: PackedScene = load("res://scenes/grass_field.tscn")

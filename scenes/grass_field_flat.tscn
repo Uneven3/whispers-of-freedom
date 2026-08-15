@@ -4,5 +4,5 @@
 
 [node name="GrassField" type="Node3D"]
 script = ExtResource("1_grass_field")
-blade_asset_path = "res://art/blender/grass/grass_blade_tuft.blend"
-blade_color = Color(0.55, 0.32, 0.12, 1.0)
+blade_asset_path = "res://art/blender/grass/grass_blade_flat.blend"
+blade_color = Color(0.18, 0.35, 0.55, 1.0)

@@ -56,6 +56,18 @@ extends Node3D
 	set(value):
 		blade_asset_path = value
 		_queue_rebuild()
+## Overrides grass_blade.gdshader's blade_color uniform — lets several
+## GrassField instances tell each other apart at a glance (e.g. comparing
+## blade variants side by side) without editing the shader itself. Default
+## matches the shader's own default, so leaving this untouched changes
+## nothing.
+@export var blade_color: Color = Color(0.22, 0.42, 0.18, 1.0):
+	set(value):
+		blade_color = value
+		if _mmi:
+			var mat: ShaderMaterial = _mmi.multimesh.mesh.surface_get_material(0)
+			if mat:
+				mat.set_shader_parameter("blade_color", blade_color)
 
 var _mmi: MultiMeshInstance3D
 var _blade_positions: Array[Vector2] = []
@@ -209,6 +221,7 @@ func _find_mesh_instance(node: Node) -> MeshInstance3D:
 func _rescaled_blade_mesh(base: ArrayMesh, height: float) -> ArrayMesh:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/world/grass_blade.gdshader")
+	mat.set_shader_parameter("blade_color", blade_color)
 	var out := ArrayMesh.new()
 	for i in base.get_surface_count():
 		var arrays := base.surface_get_arrays(i)
@@ -249,6 +262,7 @@ func _build_fallback_blade_mesh() -> Mesh:
 
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/world/grass_blade.gdshader")
+	mat.set_shader_parameter("blade_color", blade_color)
 	blade.surface_set_material(0, mat)
 	if blade.get_surface_count() > 1:
 		blade.surface_set_material(1, mat)
