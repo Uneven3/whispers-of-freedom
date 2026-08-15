@@ -24,6 +24,15 @@ func _ready() -> void:
 func is_in_progress() -> bool:
 	return _strike_in_progress or _strike_cooldown > 0.0
 
+## Only true mid-dash — unlike is_in_progress(), doesn't include the
+## post-swing cooldown window. CombatBroker uses this (not is_in_progress())
+## to decide whether Strike gets exclusive routing this frame, so a same-frame
+## bow release/other action during pure cooldown isn't silently dropped —
+## is_in_progress() staying true through cooldown is intentional for its own
+## purpose (a fresh press shouldn't interrupt a cooldown already started).
+func is_active() -> bool:
+	return _strike_in_progress
+
 func tick(intents: Intents, delta: float, broker: Node) -> void:
 	var cb := broker as CombatBroker
 	if not cb:
@@ -32,7 +41,7 @@ func tick(intents: Intents, delta: float, broker: Node) -> void:
 	# Handle checking if dash completed
 	if _strike_in_progress:
 		var movement_broker = cb._movement_broker
-		if movement_broker and movement_broker.get_current_mode() != 14: # 14 is STRIKE
+		if movement_broker and movement_broker.get_current_mode() != LocomotionState.ID.STRIKE:
 			_strike_in_progress = false
 			if _target_node and is_instance_valid(_target_node):
 				var dist: float = cb.get_body_reader().get_global_position().distance_to(_target_node.global_position)
@@ -53,13 +62,19 @@ func tick(intents: Intents, delta: float, broker: Node) -> void:
 		_strike_cooldown -= delta
 		if _strike_cooldown <= 0:
 			cb.set_combat_state(&"idle")
-		if intents.wants_attack:
-			return
+		else:
+			# Still cooling down — a queued press falls through to the fresh-
+			# swing check below only once the cooldown actually clears. Without
+			# this branch, a press landing on the exact frame the cooldown hits
+			# zero was dropped: is_action_just_pressed is one-shot, so the same
+			# input is gone next frame and the player has to press again.
+			if intents.wants_attack:
+				return
 
 	if not intents.wants_attack:
 		return
 		
-	var stamina = cb._stamina
+	var stamina: Node = cb._stamina
 	if stamina and stamina.is_exhausted():
 		return
 		
@@ -88,7 +103,7 @@ func tick(intents: Intents, delta: float, broker: Node) -> void:
 			strike_motor.start_strike_dash(target, target.global_position)
 			
 		cb.set_combat_state(&"strike_dash")
-		var proposal := TransitionProposal.new(14, TransitionProposal.Priority.FORCED)
+		var proposal := TransitionProposal.new(LocomotionState.ID.STRIKE, TransitionProposal.Priority.FORCED, StrikeMotor.STRIKE_PRIORITY_WEIGHT)
 		if movement_broker:
 			movement_broker.inject_forced_proposal(proposal)
 	else:

@@ -9,6 +9,7 @@ const HitPauseScript = preload("res://scripts/player_action_stack/combat/hit_pau
 const CombatDummyScript = preload("res://scripts/world/combat_dummy.gd")
 const StrikeMotorScript = preload("res://scripts/player_action_stack/movement/motors/strike_motor.gd")
 const MovementBrokerScript = preload("res://scripts/player_action_stack/movement/movement_broker.gd")
+const StaminaComponentScript = preload("res://scripts/player_action_stack/movement/stamina_component.gd")
 
 class MockMovementBroker extends MovementBroker:
 	var mock_reader: BodyReader
@@ -26,7 +27,7 @@ class MockMovementBroker extends MovementBroker:
 	func inject_forced_proposal(proposal: TransitionProposal) -> void:
 		active_mode = proposal.target_state
 
-func _make_broker() -> Array:
+func _make_broker(stamina: Node = null) -> Array:
 	var root := Node3D.new()
 
 	var body := CharacterBody3D.new()
@@ -61,7 +62,7 @@ func _make_broker() -> Array:
 	hit_pause.name = "HitPauseComponent"
 	broker.add_child(hit_pause)
 
-	broker.configure(BodyReader.new(body), null, root, movement_broker)
+	broker.configure(BodyReader.new(body), stamina, root, movement_broker)
 	add_child_autofree(root)
 
 	return [root, body, broker, movement_broker, strike_motor]
@@ -186,6 +187,7 @@ func test_strike_snapping_to_target():
 	var proposals = strike_motor.gather_proposals(14, intents, mock_services, null)
 	assert_eq(proposals.size(), 1)
 	assert_eq(proposals[0].target_state, 14)
+	assert_eq(proposals[0].override_weight, StrikeMotorScript.STRIKE_PRIORITY_WEIGHT, "must outrank Stairs/Ladder/WallJump's lower weights to avoid losing arbitration mid-dash")
 
 	strike_motor.tick(0.016, intents, body, null, mock_services)
 	assert_true(body.velocity.z < 0.0, "Velocity should point towards target (negative Z)")
@@ -193,3 +195,132 @@ func test_strike_snapping_to_target():
 	body.global_position = Vector3(0, 0, -2.4)
 	strike_motor.tick(0.016, intents, body, null, mock_services)
 	assert_false(strike_motor._active, "StrikeMotor should deactivate when close enough")
+
+func test_bow_blocked_when_exhausted():
+	var stamina := StaminaComponentScript.new()
+	add_child_autofree(stamina)
+	stamina.current_stamina = 0.0
+	var setup := _make_broker(stamina)
+	var broker: Node = setup[2]
+
+	var intents := Intents.new()
+	intents.wants_archery_release = true
+	intents.aim_direction = Vector3.FORWARD
+	broker.tick(intents, 0.016)
+
+	assert_ne(broker.get_combat_state(), &"bow_release", "exhausted player should not be able to fire")
+
+func test_takedown_blocked_when_exhausted():
+	var stamina := StaminaComponentScript.new()
+	add_child_autofree(stamina)
+	stamina.current_stamina = 0.0
+	var setup := _make_broker(stamina)
+	var root: Node3D = setup[0]
+	var body: CharacterBody3D = setup[1]
+	var broker: Node = setup[2]
+	body.global_position = Vector3.ZERO
+
+	var dummy: StaticBody3D = CombatDummyScript.new()
+	dummy.position = Vector3(0, 0, -1.5)
+	root.add_child(dummy)
+	await get_tree().process_frame
+
+	var intents := Intents.new()
+	intents.wants_assassinate = true
+	broker.tick(intents, 0.016)
+
+	assert_ne(broker.get_combat_state(), &"takedown_hit", "exhausted player should not be able to execute a takedown")
+	assert_false(dummy.is_defeated())
+
+func test_parry_blocked_when_exhausted():
+	var stamina := StaminaComponentScript.new()
+	add_child_autofree(stamina)
+	stamina.current_stamina = 0.0
+	var setup := _make_broker(stamina)
+	var root: Node3D = setup[0]
+	var body: CharacterBody3D = setup[1]
+	var broker: Node = setup[2]
+	body.global_position = Vector3.ZERO
+
+	var dummy: StaticBody3D = CombatDummyScript.new()
+	dummy.position = Vector3(0, 0, -2)
+	root.add_child(dummy)
+	await get_tree().process_frame
+	dummy._begin_telegraph()
+
+	var intents := Intents.new()
+	intents.wants_parry = true
+	broker.tick(intents, 0.016)
+
+	assert_ne(broker.get_combat_state(), &"counter_hit", "exhausted player should not land a parry counter")
+
+func test_strike_drains_real_stamina_component():
+	# Regression: strike_action.gd's exhaustion gate/drain had only ever run
+	# with stamina=null in this test file — proving it parses, not that
+	# StaminaComponent.is_exhausted()/drain() actually work at runtime.
+	var stamina := StaminaComponentScript.new()
+	add_child_autofree(stamina)
+	var setup := _make_broker(stamina)
+	var broker: Node = setup[2]
+
+	var intents := Intents.new()
+	intents.wants_attack = true
+	broker.tick(intents, 0.016)
+
+	assert_lt(stamina.get_current(), stamina.get_max(), "a real StaminaComponent should actually be drained")
+
+func test_bow_drains_real_stamina_component():
+	var stamina := StaminaComponentScript.new()
+	add_child_autofree(stamina)
+	var setup := _make_broker(stamina)
+	var broker: Node = setup[2]
+
+	var intents := Intents.new()
+	intents.wants_archery_release = true
+	intents.aim_direction = Vector3.FORWARD
+	broker.tick(intents, 0.016)
+
+	assert_lt(stamina.get_current(), stamina.get_max(), "firing an arrow should drain real stamina")
+
+func test_attack_press_not_dropped_on_cooldown_expiry_frame():
+	var setup := _make_broker()
+	var broker: Node = setup[2]
+	var sa: Node = broker.get_node("StrikeAction")
+
+	var intents := Intents.new()
+	intents.wants_attack = true
+	broker.tick(intents, 0.016)
+	assert_eq(broker.get_combat_state(), &"strike_swing")
+
+	intents.wants_attack = false
+	var step: float = 0.016
+	while sa._strike_cooldown > step:
+		broker.tick(intents, step)
+
+	# This tick crosses the cooldown to <= 0 — simulate a press landing on
+	# exactly this frame, the case that used to be silently dropped.
+	intents.wants_attack = true
+	broker.tick(intents, step)
+
+	assert_eq(broker.get_combat_state(), &"strike_swing", "a press landing exactly as cooldown clears must not be dropped")
+
+func test_bow_release_not_dropped_during_strike_cooldown():
+	var setup := _make_broker()
+	var broker: Node = setup[2]
+	var sa: Node = broker.get_node("StrikeAction")
+
+	var intents := Intents.new()
+	intents.wants_attack = true
+	broker.tick(intents, 0.016)
+	assert_eq(broker.get_combat_state(), &"strike_swing")
+	assert_false(sa.is_active(), "an air-swing (no target) never enters _strike_in_progress")
+
+	# Now on cooldown, not mid-dash. A same-frame archery release must still
+	# reach BowAction instead of being swallowed by the old is_in_progress()
+	# routing gate (which included the cooldown window).
+	intents.wants_attack = false
+	intents.wants_archery_release = true
+	intents.aim_direction = Vector3.FORWARD
+	broker.tick(intents, 0.016)
+
+	assert_eq(broker.get_combat_state(), &"bow_release", "archery release during strike cooldown (not mid-dash) must not be dropped")

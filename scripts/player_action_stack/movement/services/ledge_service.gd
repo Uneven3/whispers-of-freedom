@@ -48,6 +48,17 @@ var _lip_height: float = 0.0
 var _landing_height: float = 0.0
 var _is_occupied: bool = false
 
+## Set by MovementBroker each physics frame, before update_facts(). Narrow,
+## verified-safe skip: while STRIKE is active no FORCED-priority consumer of
+## ledge facts (Mantle requires prior CLIMB/WALL_JUMP, AutoVault's sticky
+## continuation requires current_mode == AUTO_VAULT already) can win
+## arbitration over STRIKE's own FORCED proposal, and AutoVault's non-sticky
+## entry is only PLAYER_REQUESTED priority — it can't preempt STRIKE either.
+## Not extended to other states (stairs/ladder/sprint) without playtesting —
+## see ARCHITECTURE.md §17, feel-affecting traversal changes need to be
+## played, not just green-tested.
+var _current_mode: int = -1
+
 var _down_cast: ShapeCast3D
 var _vault_down_cast: ShapeCast3D
 var _vault_landing_cast: ShapeCast3D
@@ -107,8 +118,13 @@ func _create_down_cast(target_y: float) -> ShapeCast3D:
 	add_child(cast)
 	return cast
 
+func set_current_mode(mode: int) -> void:
+	_current_mode = mode
+
 func update_facts(body_reader: BodyReader) -> void:
 	_reset_facts()
+	if _current_mode == LocomotionState.ID.STRIKE:
+		return
 	_body_half_height = body_reader.get_body_half_height()
 	_body_radius = body_reader.get_body_radius()
 	var pos: Vector3 = body_reader.get_global_position()

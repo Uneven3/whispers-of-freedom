@@ -16,7 +16,7 @@ var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _is_aiming: bool = false
 
-@onready var _body: CharacterBody3D = $"../EntityController/Body"
+@onready var _body: CharacterBody3D = get_node_or_null("../EntityController/Body") as CharacterBody3D
 @onready var _lens: SpringArm3D = $Lens
 @onready var _camera: Camera3D = $Lens/Camera3D
 var _reticle_canvas: CanvasLayer
@@ -25,6 +25,8 @@ var _reticle_root: Control
 func _ready() -> void:
 	# Registered visual-update loop owner — _process intentionally always-on (smooth camera interpolation).
 	set_as_top_level(true)
+	if _body == null:
+		push_warning("CameraRig could not resolve ../EntityController/Body — camera will not follow")
 	var broker = get_node_or_null("../EntityController/MovementBroker")
 	if broker and broker.has_method("get_state_reader"):
 		var state_reader = broker.get_state_reader()
@@ -74,9 +76,21 @@ func _process(delta: float) -> void:
 	if _reticle_root and _reticle_root.visible:
 		_update_reticle_position()
 
+## Every state directly reachable from FALL that counts as "landed" for the
+## camera dip. Deliberately excludes AUTO_VAULT/MANTLE/CLIMB/GLIDE/WALL_JUMP/
+## EDGE_LEAP/JUMP/STRIKE — those are active traversal/combat the player
+## triggers on purpose, not a passive "hit the ground" landing, even though
+## some (AUTO_VAULT) are also mechanically reachable straight from FALL.
+const _LANDING_STATES: Array[LocomotionState.ID] = [
+	LocomotionState.ID.WALK,
+	LocomotionState.ID.SPRINT,
+	LocomotionState.ID.STAIRS,
+	LocomotionState.ID.SNEAK,
+	LocomotionState.ID.LADDER,
+]
+
 func _on_locomotion_state_changed(old_mode: int, new_mode: int) -> void:
-	# Fall is state 3, Walk is 1, Sprint is 2
-	if old_mode == 3 and (new_mode == 1 or new_mode == 2):
+	if old_mode == LocomotionState.ID.FALL and new_mode in _LANDING_STATES:
 		_current_dip += landing_dip_intensity
 
 func _on_aiming_changed(is_aiming: bool) -> void:

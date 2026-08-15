@@ -108,6 +108,8 @@ func _guess_state_id(motor_name: String) -> int:
 func _physics_process(delta: float) -> void:
 	var intents: Intents = _brain.get_intents() if _brain and _brain.has_method("get_intents") else Intents.new()
 
+	if _ledge_service:
+		_ledge_service.set_current_mode(_current_mode)
 	for s in _services:
 		if s.has_method("update_facts"):
 			s.update_facts(_body_reader)

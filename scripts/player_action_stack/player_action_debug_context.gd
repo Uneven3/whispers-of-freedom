@@ -3,6 +3,7 @@ extends BaseDebugContext
 
 var _label: Label
 var _canvas: CanvasLayer
+var _data: Dictionary = {}
 
 func _ready() -> void:
 	panel_key = 1 # F1 panel
@@ -30,12 +31,19 @@ func _on_visibility_changed(is_visible: bool) -> void:
 		_canvas.visible = is_visible
 
 func clear() -> void:
+	_data.clear()
 	if _label:
 		_label.text = ""
 
+## MovementBrokerDebugReporter and CombatDebugReporter both push to this same
+## panel_key=1 context — merge into a persistent dict instead of replacing,
+## so whichever pushes last on a physics frame doesn't wipe the other's
+## fields (was: combat state visible for at most one frame before Movement's
+## every-physics-frame push overwrote it).
 func push_data(data: Dictionary) -> void:
 	if not _label: return
+	_data.merge(data, true)
 	var debug_str = "[Player Action Stack]\n"
-	for k in data.keys():
-		debug_str += "%s: %s\n" % [k, str(data[k])]
+	for k in _data.keys():
+		debug_str += "%s: %s\n" % [k, str(_data[k])]
 	_label.text = debug_str

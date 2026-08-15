@@ -16,18 +16,23 @@ func _ready() -> void:
 func tick(intents: Intents, _delta: float, broker: Node) -> void:
 	if not broker:
 		return
+	var cb := broker as CombatBroker
+	var stamina: Node = cb._stamina if cb else null
+	if stamina and stamina.is_exhausted():
+		return
 	if intents.wants_archery_aim:
 		broker.set_combat_state(&"bow_drawn")
 	if not intents.wants_archery_release:
 		return
-	_fire_arrow(intents, broker)
+	if _fire_arrow(intents, broker) and stamina:
+		stamina.drain(stamina_cost)
 
-func _fire_arrow(intents: Intents, broker: Node) -> void:
+func _fire_arrow(intents: Intents, broker: Node) -> bool:
 	if intents.aim_direction == Vector3.ZERO:
-		return
+		return false
 	var parent: Node = broker.get_projectile_parent()
 	if not parent:
-		return
+		return false
 	var arrow: Node3D = ArrowProjectileScript.new()
 	parent.add_child(arrow)
 	var body_reader: BodyReader = broker.get_body_reader()
@@ -49,3 +54,4 @@ func _fire_arrow(intents: Intents, broker: Node) -> void:
 		broker.set_combat_state(&"bow_release")
 	if broker.has_method("trigger_hit_pause"):
 		broker.trigger_hit_pause(0.65, 0.025)
+	return true

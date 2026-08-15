@@ -46,7 +46,7 @@ func tick(intents: Intents, delta: float) -> void:
 	if not intents:
 		return
 	set_aiming(intents.wants_archery_aim)
-	if _strike_action and _strike_action.has_method("is_in_progress") and _strike_action.is_in_progress():
+	if _strike_action and _strike_action.has_method("is_active") and _strike_action.is_active():
 		_strike_action.tick(intents, delta, self)
 		return
 	if intents.wants_archery_aim or intents.wants_archery_release:
