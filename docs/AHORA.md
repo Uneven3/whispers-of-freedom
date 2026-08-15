@@ -89,13 +89,68 @@ tocado en código:**
 mientras revisaba el patrón; ya está anotado en `ARCHITECTURE.md` §14 en vez
 de quedar como sorpresa la próxima vez que alguien lea esa ley).
 
+## Terreno + auditoría de player_action_stack, 2026-08-14 (misma sesión)
+
+**Terrain3D instalado y en uso.** Plugin no versionado (`addons/terrain_3d/`
+en `.gitignore`, ver arriba); nueva escena `scenes/terrain_base.tscn`
+(`Terrain3D` + sky/sol propios, sin `Ground` plano) con regiones ya
+esculpidas en `world_data/terrain/` (sí versionado — es dato, no el binario
+del plugin).
+
+**`SpawnSnap`** (`scripts/player_action_stack/spawn_snap.gd`, nodo hijo de
+`Player`, `@tool`) reemplaza el spawn Y hardcodeado: busca un nodo del grupo
+`"terrain"`, lee `Terrain3DData.get_height()`, suma el half-height real de la
+cápsula (`BodyReader.get_body_half_height()`) + un margen de caída, y
+opcionalmente llama `Terrain3D.set_camera()` (nada más lo hacía fuera del
+editor — sin eso, el modo de colisión `Dynamic` de Terrain3D podía no generar
+colisión en ningún lado durante una partida real). Sin nodo `"terrain"` en la
+escena (caso `grass_field.tscn`) es no-op — no rompe lo que ya andaba.
+
+**El bug real de "player atascado en el terreno" — no era `SpawnSnap`.**
+`EntityController` era `extends Node` (no `Node3D`), sentado entre `Player` y
+tanto `Body` como `VisualsPivot`. Godot's `Node3D` sólo hereda transform de su
+padre **inmediato** — no busca un ancestro `Node3D` más lejano a través de un
+`Node` plano. Mover `Player` nunca movía la cápsula real, ni en editor ni en
+partida — confirmado contra el motor real (Godot 4.7.1), no asumido.
+Arreglado: `EntityController extends Node3D` (script y `.tscn`), sigue sin
+transform propia, sólo deja de cortar la cadena. Mismo bug afectaba a
+`horse.tscn` (comparte `entity_base.tscn`), arreglado gratis. Encontrado y
+arreglado con `/iterate-safely` — dos rondas de crítica de un subagente sin
+contexto antes de escribir código, porque los primeros intentos (bug de
+`groups=` mal ubicado, crash de instancia placeholder en editor) no eran la
+causa de fondo.
+
+**Auditoría `/code-review` sobre `player_action_stack/` completo** (38
+archivos), pedida explícitamente para buscar más bugs del mismo tipo
+(asunciones de motor no verificadas). 9 hallazgos reales, los 9 arreglados
+(commit `3d0dff7`): path frágil sin guard en `CameraRig`; `StrikeMotor`
+perdía el arbitraje contra Stairs/Ladder por empate de prioridad (y casi
+introduzco un bug nuevo — la crítica encontró que si la propuesta pierde de
+plano en vez de empatar, `_active` quedaba trabado para siempre sin el
+watchdog que se agregó); arco/parry/takedown no gastaban stamina; input de
+ataque perdido en el frame exacto que expira el cooldown; tiro de arco
+descartado si había un golpe en cooldown; ints crudos en vez de
+`LocomotionState.ID`; overlay de debug de Movement y Combat pisándose;
+cámara de aterrizaje sin cubrir Stairs/Sneak/Ladder; casts de `LedgeService`
+sin gate de estado (arreglo acotado a `STRIKE` únicamente — extenderlo a
+stairs/ladder/sprint necesita jugarlo, no sólo tests en verde, §17).
+
+**Patrón repetido a tener en cuenta:** el editor de Godot cachea estado en
+memoria y no siempre recoge cambios externos al archivo — ya nos mordió con
+`project.godot` (el Input Map resucitó 3 acciones ya borradas) y con
+`SpawnSnap` (sus perillas no hacían nada hasta agregar `@tool`, y aun con
+`@tool` un nodo ya instanciado en una sesión vieja puede seguir corriendo el
+script viejo). Si algo no refleja un cambio reciente: reiniciar Godot del
+todo, no sólo recargar la escena, antes de asumir que el código está mal.
+
 ## Estado del código, al 2026-08-14
 
-Validado headless: 53/53 tests, carga de escena principal sin errores —
-falta jugarlo.
+Validado headless: 79/79 tests, 5 escenas cargan sin errores
+(`player`/`grass_field`/`terrain_base`/`horse`/`main`) — falta jugarlo.
 
-Godot **4.7**, `run/main_scene = grass_field.tscn`. Escenas: `main`,
-`player`, `horse`, `entity_base`, `grass_field`. Sin animación de personaje
+Godot **4.7**, `run/main_scene = grass_field.tscn` (sin cambiar; terreno se
+prueba desde `terrain_base.tscn` con F6). Escenas: `main`, `player`, `horse`,
+`entity_base`, `grass_field`, `terrain_base`. Sin animación de personaje
 todavía — cápsulas graybox (player azul, enemigo/target esfera roja, suelo
 gris, interactuable cilindro amarillo — 1 unidad = 1 metro).
 
@@ -107,31 +162,44 @@ sin arrancar.
 
 **Combate** — `CombatBroker` con las 4 acciones (`BowAction`,
 `ParryCounterAction`, `TakedownAction`, `StrikeAction`) siempre disponibles
-en el personaje único, arbitradas por prioridad (ver Pivote arriba). No hay
-IA enemiga real, todo resuelve contra `CombatDummy` en `scripts/world/`.
+en el personaje único, arbitradas por prioridad (ver Pivote arriba), las 4
+gastan y respetan stamina (ver auditoría arriba). No hay IA enemiga real,
+todo resuelve contra `CombatDummy` en `scripts/world/`.
 
 **Cámara** — `CameraRig` (`Node3D` + `SpringArm3D`) tercera persona orbital.
 Apuntado/lock-on no confirmados en código propio todavía.
 
+**Mundo/terreno** — `Terrain3D` (plugin, no versionado) en `terrain_base.tscn`,
+regiones esculpidas en `world_data/terrain/`. `grass_field.tscn` sigue con su
+plano `Ground` fijo, sin terreno esculpido — son dos escenas de prueba
+separadas, no una migró a la otra todavía.
+
 **Debug** — `DebugOverlay` autoload, F1 togglea el panel. Reporter para
-Movement y Combat vía `BaseDebugContext`/`panel_key`.
+Movement y Combat vía `BaseDebugContext`/`panel_key`, mismo panel, hacen
+merge (ver auditoría arriba — antes se pisaban).
 
-**Tests: 15 archivos, 53 tests, 53/53 en verde** (`godot --headless -s
+**Tests: 20 archivos, 79 tests, 79/79 en verde** (`godot --headless -s
 addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido esta sesión).
-Escena principal carga headless sin errores (`godot --headless
---quit-after`). **Ninguno de los dos reemplaza jugarlo** (§17).
+5 escenas cargan headless sin errores (`godot --headless --quit-after`).
+**Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
+particular todavía no se jugó, sólo se verificó headless.
 
-**Git:** repo inicializado 2026-08-14; el pivote de hoy quedó en su propio
-commit, separado del de reorganización de docs.
+**Git:** repo inicializado 2026-08-14; esta sesión (terreno + fix de
+`EntityController` + auditoría) quedó en 9 commits separados sobre el pivote,
+sin pushear todavía — hace el push la persona, no el asistente.
 
 ## Próximo foco (propuesto, no comprometido)
 
-1. **Jugar la caja completa** — movimiento, las 4 acciones de combate
-   (incluyendo el caso de prioridad aim+attack), horse — nada de esto se
-   verificó jugado todavía, sólo headless.
-2. Corregir la violación de §14 en `strike_action.gd` (llama
+1. **Seguir modificando terreno y probando Terrain3D** (explícito, siguiente
+   sesión) — esculpido, texturas, más regiones. Con `EntityController` ya
+   arreglado, el player debería moverse/reposicionarse con normalidad; probar
+   eso primero antes de asumir que algo nuevo está roto.
+2. **Jugar la caja completa** — movimiento, las 4 acciones de combate (con
+   stamina real ahora), horse — nada de esto se verificó jugado todavía,
+   sólo headless.
+3. Corregir la violación de §14 en `strike_action.gd` (llama
    `inject_forced_proposal()` directo en vez de señal-hacia-arriba +
    `EntityController` reenvía) — antes de que otro sistema copie el patrón.
-3. Decidir la premisa de mundo/narrativa (`NORTE.md` → Decisiones abiertas)
+4. Decidir la premisa de mundo/narrativa (`NORTE.md` → Decisiones abiertas)
    y la licencia del proyecto — ambas quedaron abiertas al pivotear lejos de
    Druid.

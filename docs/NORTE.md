@@ -85,8 +85,10 @@ Godot concretos — no hay que rediseñar cuando toque implementarla.
    `PlayerBrain` sobre el mismo stack Movement). Diseño final más ambicioso
    queda abierto (criaturas variadas, vínculo personal) sin comprometerse
    todavía.
-5. **Mundo y entorno** — hoy sólo graybox (`grass_field`, `entity_base`);
-   sin día/noche, sin bosque, sin mundo real construido. Todo ⏳.
+5. **Mundo y entorno** — graybox (`grass_field`, `entity_base`) más
+   `terrain_base` ⏳ arrancado con Terrain3D (esculpido real, sin texturizar
+   ni poblar todavía); sin día/noche, sin bosque. Ver `AHORA.md` para el
+   estado exacto.
 6. **Multiplayer** — arquitectura multi-actor ya soporta un `Brain` nuevo
    sin motores nuevos (pilar 5); red sin empezar.
 7. **Personajes/problemas** — quests opcionales estilo Majora's Mask, sin

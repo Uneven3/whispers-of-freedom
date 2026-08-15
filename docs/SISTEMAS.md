@@ -188,15 +188,15 @@ describe un editor in-game entero porque Bevy no trae uno):
   `Resource`/`ResourceSaver` que el resto del proyecto — no un formato
   aparte.
 
-## Plugins a evaluar (ninguno adoptado todavía)
+## Plugins a evaluar
 
-| Plugin | Para qué | Reemplaza hueco nativo en |
-|---|---|---|
-| **Terrain3D** | Terreno esculpible + splat + grass instancing | Mundo/render |
-| **LimboAI** | Behavior trees / HFSM | IA enemiga, FSM de gameplay si crece |
-| **Dialogue Manager** | Diálogo ramificado | Problemas opcionales/NPCs |
-| **Sky3D** | Día/noche + clima empaquetado | Mundo/render (opcional, alternativa a mano) |
-| **Scatter** | Placement/densidad de instancias | Pasto, foliage, props |
+| Plugin | Para qué | Reemplaza hueco nativo en | Estado |
+|---|---|---|---|
+| **Terrain3D** | Terreno esculpible + splat + grass instancing | Mundo/render | Adoptado 2026-08-14, ver `AHORA.md` |
+| **LimboAI** | Behavior trees / HFSM | IA enemiga, FSM de gameplay si crece | Sin evaluar |
+| **Dialogue Manager** | Diálogo ramificado | Problemas opcionales/NPCs | Sin evaluar |
+| **Sky3D** | Día/noche + clima empaquetado | Mundo/render (opcional, alternativa a mano) | Sin evaluar |
+| **Scatter** | Placement/densidad de instancias | Pasto, foliage, props | Sin evaluar |
 
 Ninguno se adopta sin probarlo contra la filosofía del proyecto: nativo
 primero, plugin sólo si ahorra ingeniería real (mismo criterio que §10 de
