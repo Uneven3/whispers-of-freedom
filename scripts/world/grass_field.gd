@@ -119,10 +119,13 @@ func _build_field() -> void:
 	mm.instance_count = blade_count
 
 	# Clump centers — blades cluster near these for an organic look.
+	# sqrt() turns uniform-in-radius sampling into uniform-in-area: without
+	# it, ring area grows with r but sample density with 1/r, so clumps pile
+	# up near the field center and thin out toward the edge.
 	var clumps: Array[Vector2] = []
 	for c in clump_count:
 		var angle := rng.randf_range(0.0, TAU)
-		var dist := rng.randf() * field_radius
+		var dist := sqrt(rng.randf()) * field_radius
 		clumps.append(Vector2(cos(angle) * dist, sin(angle) * dist))
 
 	_blade_positions.clear()
@@ -170,8 +173,8 @@ func _build_field() -> void:
 ## sunk base, waist row at 30% height — see tools/blender/generate_grass_blade_*.py
 ## and art/blender/grass/grass_blade_*.blend). Cached per-process and per-path
 ## (several GrassField instances can point at different blade_asset_path
-## values, e.g. scenes/grass_comparison.tscn) since a given asset's base shape
-## never changes between Inspector rebuilds — only max_blade_height does.
+## values) since a given asset's base shape never changes between Inspector
+## rebuilds — only max_blade_height does.
 static var _cached_base_meshes: Dictionary = {}
 static var _load_failed_paths: Dictionary = {}
 

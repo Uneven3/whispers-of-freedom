@@ -8,23 +8,30 @@ leaf_verts -- pointed tip, sunk base, waist row at 30% height, no tip_bend),
 but only ONE plane instead of two crossed at 90 degrees. 2 tris total, half
 the single variant's 4.
 
-This exists to isolate one specific question raised after playing the
-single/tuft comparison in scenes/grass_comparison.tscn: the tuft's extra
-density barely read as different in motion (screenshots from
-grass_density_probe.gd overstated it -- an isolated, static, close-up test
-scene exaggerates gaps that get diluted at real field density; see
-docs/AHORA.md), so before spending triangles on density, it's worth
-checking the *other* direction -- does the single variant's own crossing
-(2 perpendicular planes, there specifically so a blade never goes edge-on
-invisible as the camera orbits -- see the "Crossed quads read as grass from
-any angle" comment in grass_field.gd's history) actually earn its keep, or
-would one flat plane look close enough for half the triangle cost?
+This exists to isolate one specific question raised after playing a
+single/tuft comparison: the tuft's extra density barely read as different
+in motion (screenshots from grass_density_probe.gd overstated it -- an
+isolated, static, close-up test scene exaggerates gaps that get diluted at
+real field density; see docs/AHORA.md), so before spending triangles on
+density, it's worth checking the *other* direction -- does the single
+variant's own crossing (2 perpendicular planes, there specifically so a
+blade never goes edge-on invisible as the camera orbits -- see the "Crossed
+quads read as grass from any angle" comment in grass_field.gd's history)
+actually earn its keep, or would one flat plane look close enough for half
+the triangle cost?
 
 The known risk this variant is deliberately reintroducing, so it can be
 judged instead of assumed: a single flat plane vanishes to a hairline when
 viewed exactly edge-on, and that angle sweeps past constantly as a
 third-person camera orbits. A static screenshot can't show that -- has to
 be judged walking around it with the camera actually moving.
+
+**Outcome (docs/AHORA.md, 2026-08-15):** the project settled on the
+crossed single blade (with a V-tip, see generate_grass_blade_single.py) as
+the shipped default -- neither this flat variant nor the tuft showed a
+clear enough win to justify their cost/risk. Kept on disk (asset + this
+generator) in case it's useful for LOD tiers later; not wired into any
+scene right now.
 """
 
 import sys

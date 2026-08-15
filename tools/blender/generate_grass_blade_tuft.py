@@ -33,6 +33,13 @@ the result, not assumed correct on paper:**
    place_leaf()'s offset is now the real separator: each leaf's root sits at
    its own point, arranged in an X (see ROOT_ANGLES_DEG below), not
    pivoting from a shared center.
+
+**Outcome (docs/AHORA.md, 2026-08-15):** the project settled on the crossed
+single blade (with a V-tip, see generate_grass_blade_single.py) as the
+shipped default -- even at equal total triangle budget (fewer tuft
+instances), this variant didn't cover more screen area than single. Kept
+on disk (asset + this generator) in case it's useful for LOD tiers later;
+not wired into any scene right now.
 """
 
 import math

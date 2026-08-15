@@ -176,219 +176,71 @@ una escalera y una escalera de mano reales, y pegarle a un `CombatDummy` con
 las 4 acciones, para confirmar que el arreglo del guard no cambió el feel de
 nada que ya andaba.
 
-## Brizna modelada en Blender, 2026-08-15 (misma sesión)
+## Pasto: de graybox a brizna modelada, exploración de variantes, y decisión final (2026-08-14/15)
 
-Pedido explícito: mejorar la malla de la brizna "con estándar de industria,
-low poly", hecha con Blender + Python en vez de a mano en GDScript, como
-ejercicio para aprender del modelo resultante. Ejecutado con
-`/iterate-safely`: plan (geometría + pipeline de import) → crítica de un
-subagente sin contexto → triage → ejecución, con dos verificaciones
-empíricas contra el motor real antes de escribir el plan final (no
-asumidas): que Godot puede importar un `.blend` nativo headless
-(`godot --headless --editor --import`, ver bullet nuevo arriba) y, ya
-ejecutando, que la primera versión de la geometría estaba tumbada de costado
-(construida con la altura en el eje Y en vez de Z — Blender es Z-arriba
-nativo, no Y — corregido y confirmado con un render de control antes de
-integrarla).
+Reemplazado el quad rectangular a mano por una brizna modelada en
+Blender+Python (`tools/blender/generate_grass_blade_single.py`, perfil de
+"hoja" investigado en `breath-of-freedom` — punta y base en punta, cintura a
+0,30 de la altura para que arquee con el viento), importada nativa en Godot
+(`blade_asset_path`, nuevo `@export_file("*.blend")` en `GrassField`, con
+caché por-path — sin exportar a `.glb`, pedido explícito del usuario: "pensá
+un pipeline que se adapte a Godot", no el de Bevy del proyecto hermano). Si
+el `.blend` no importa (máquina sin `Blender Path` configurado) cae a
+`_build_fallback_blade_mesh()`, no crashea — verificado de verdad simulando
+el clon fresco.
 
-**Geometría:** `tools/blender/generate_grass_blade_single.py` (bpy, corrido
-headless — renombrado el 2026-08-15 al sumar la variante mata, ver abajo)
-reemplaza el quad-cruzado rectangular de
-`grass_field.gd::_build_blade_mesh()` (dos planos perpendiculares, 4
-vértices/2 triángulos cada uno, ancho fijo) por la forma de "hoja"
-investigada y medida en el proyecto hermano `breath-of-freedom`
-(`docs/BOTWGrass.md`, sección "La brizna: dos triángulos unidos por una
-arista horizontal"): cada plano termina en punta arriba y abajo (la punta de
-abajo hundida 6 cm bajo el suelo, no infinitamente angosta contra la
-tierra), con una fila de vértices media ("cintura") a 0,30 de la altura —
-sin esa fila la brizna no puede arquearse con el viento, el borde va recto
-de raíz a punta. **Mismo presupuesto de triángulos que antes** (4/instancia,
-2 planos × 2 triángulos) — sólo cambia el perfil, no la arquitectura del
-campo ni el shader de viento (`grass_blade.gdshader`, que ya sólo depende de
-`VERTEX.y` local, sin UVs — verificado antes de tocar la geometría).
+Se probaron 3 variantes intercambiables: simple cruzada (2 planos, 4 tris),
+plana sin cruzar (2 tris, riesgo conocido de desaparecer de canto al orbitar
+la cámara), y mata (4 hojas con raíces separadas en X, 8 tris). Medidas con
+`tools/grass_density_probe.gd` (herramienta propia de píxeles-por-triángulo
+— no hay nada nativo en Godot para esto) y jugadas en una escena de
+comparación con colores distintos por variante.
 
-**Pipeline, deliberadamente distinto al del proyecto hermano:** breath-of-
-freedom exporta a `.glb` con un validador de nomenclatura específico de Bevy
-(`SM_/SK_/ROOT_/bof_*`) que no aplica acá — pedido explícito del usuario
-("pensá uno mejor que se adapte a Godot") tras leer ese pipeline. Acá Godot
-importa el `.blend` directo y nativo (`art/blender/grass/grass_blade_single.blend`,
-versionado — es chico, sin texturas). El generador también renderiza un PNG
-de control (`art/blender/grass/grass_blade_single_preview.png`) sin abrir
-Blender ni Godot, para poder mirar la forma antes de integrarla.
+**Decisión final: la simple cruzada gana, con una punta en V** (`tip_bend`,
+dobla sólo el triángulo de arriba, no la hoja entera). Ni la plana ni la
+mata mostraron ventaja clara — la mata con la mitad de instancias (mismo
+presupuesto de triángulos que la simple) seguía cubriendo *menos* píxeles
+(0,93–0,97×), en parte porque su eficiencia por triángulo más baja es
+propia de la forma (hojas tapándose entre sí), no sólo del solapamiento
+entre instancias. Assets de `tuft`/`flat` **conservados en disco** (`.blend`
++ generadores Python + `grass_blade_common.py` compartido) por si sirven
+para LOD más adelante, pero sacados de toda escena
+(`grass_field_tuft.tscn`/`grass_field_flat.tscn`/`grass_comparison.tscn`
+borrados el 2026-08-15).
 
-**Integración en `grass_field.gd`:** `_load_base_blade_mesh()` carga y
-cachea (`static var`, una vez por proceso — evita reinstanciar la escena
-importada en cada rebuild del Inspector) la malla base a altura unitaria
-(1,0 m); `_rescaled_blade_mesh()` reescala sólo el eje Y por
-`max_blade_height` para no perder ese knob del Inspector. **Si el `.blend`
-no importó** (máquina sin `Blender Path` configurado, ver bullet arriba) cae
-a `_build_fallback_blade_mesh()` — el rectángulo viejo, no un crash —
-verificado de verdad simulando el clon fresco (moviendo el `.blend` y su
-caché de import fuera del proyecto y confirmando que el campo se sigue
-construyendo, con warning y sin error).
+**Lecciones que quedaron (detalle completo en `git log` de los commits del
+14/15, no repetido acá):**
+- Un screenshot estático puede mentir sobre geometría real — 3 diseños
+  sucesivos de la mata (raíces compartidas por rotar un punto sobre su
+  propio eje, inclinación rígida en vez de quiebre en la punta, offset
+  insuficiente) sólo se vieron mal con renders desde ángulos adicionales o
+  coordenadas de vértice reales, nunca con el primer render "que se veía
+  bien".
+- Una escena de medición aislada (fondo negro, campo chico y cerca) exagera
+  huecos que la densidad real del juego disimula — jugar la comparación
+  real contradijo lo que decían las capturas más de una vez.
+- **LOD, próximo tema, todavía no implementado:** la hipótesis de que
+  "briznas individuales sin medir bien" causaba pop de LOD no se sostiene
+  del todo — el mecanismo real es casi siempre el *corte* (transición dura
+  entre niveles) más que la brizna de origen, y Godot trae nativo lo que
+  `breath-of-freedom` tuvo que reinventar a mano en WGSL:
+  `GeometryInstance3D.visibility_range_begin/end` +
+  `visibility_range_fade_mode = FADE_SELF` (dither entre niveles, sin lógica
+  custom). Sin terreno real todavía donde probarlo a distancia.
 
-**Validado headless, no jugado (§17):** 92/92 tests (3 nuevos:
-`test_blade_mesh_uses_the_blender_authored_asset`,
-`test_blade_height_scales_with_max_blade_height`,
-`test_fallback_blade_mesh_is_still_valid_if_asset_missing`), 5 escenas
-cargan sin error. El render de control confirma la silueta pero **no
-reemplaza verlo en el campo real** con viento, densidad e iluminación —
-pendiente jugarlo antes de dar esto por terminado.
+**Bug de distribución real, encontrado y arreglado el 2026-08-15:** los
+centros de clump en `grass_field.gd::_build_field()` usaban
+`rng.randf() * field_radius` — uniforme en *radio*, no en *área* (el área de
+un anillo crece con r, así que esto amontonaba clumps cerca del centro del
+campo). Arreglado con `sqrt(rng.randf()) * field_radius` (muestreo uniforme
+estándar en disco). Verificado empíricamente antes de fijar el umbral del
+test nuevo, no adivinado: con el bug, radio medio de brizna ≈22,9 (default
+`field_radius=40`); con el fix, ≈27,5 (el teórico uniforme-en-área es
+26,7). Cubierto por `test_blade_positions_are_not_biased_toward_field_center`.
 
-## Dos variantes de brizna para comparar + LOD como próximo tema, 2026-08-15 (misma sesión)
-
-Tras jugar el campo (F5, `grass_field.tscn`), el usuario pidió una brizna que
-"ocupe un poco más de espacio" y planteó, aparte, el problema que no logró
-resolver en `breath-of-freedom`: transiciones de LOD visibles. Hipótesis del
-usuario: la causa era usar briznas individuales en vez de "un modelo
-estándar con medidas bien calculadas". Contraargumento dado (no
-implementado, para la próxima sesión de LOD real): en la industria una
-transición de LOD se nota casi siempre por el *mecanismo del corte* (un
-plano de distancia fijo donde todo cambia de golpe) y por no preservar
-densidad/cobertura entre niveles — no por la precisión de la malla de
-origen. La lección real de `docs/reference/breath-of-freedom/BOTWGrass.md`
-(#9-11: el footprint promedio subestimado 2,83× rompía la cobertura al
-cambiar de nivel) apoya la parte de "medir bien", pero a nivel de fórmula de
-densidad agregada, no de brizna individual. Godot trae nativo lo que
-`breath-of-freedom` tuvo que reinventar en WGSL: `GeometryInstance3D.
-visibility_range_begin/end` + `visibility_range_fade_mode = FADE_SELF` hace
-cross-fade con dither entre niveles sin lógica custom — **no implementado
-todavía**, queda pendiente para cuando haya terreno real donde probarlo a
-distancia.
-
-**Mientras tanto, para decidir con los ojos y no a ciegas:** dos variantes
-de brizna instanciables por separado, comparten `grass_field.gd` sin
-duplicar el mecanismo (viento, instanciado, clumps) — sólo cambia qué malla
-cargan. Ejecutado con `/iterate-safely`.
-
-- `blade_asset_path` (nuevo `@export_file("*.blend")` en `GrassField`,
-  reemplaza la constante `BLADE_ASSET_PATH` fija) hace la malla-brizna
-  intercambiable por Inspector. **Bug real que el propio refactor iba a
-  introducir, encontrado por la crítica antes de escribir código:** el
-  caché (`static var`, compartido entre instancias del mismo proceso — ej.
-  el test suite entero) era una sola malla/flag, no por-path — dos
-  `GrassField` con `blade_asset_path` distinto se hubieran pisado, el
-  segundo recibiendo la malla del primero. Arreglado con
-  `_cached_base_meshes`/`_load_failed_paths` como `Dictionary` keyeado por
-  `blade_asset_path`. Cubierto por
-  `test_blade_asset_path_caching_does_not_leak_across_variants` (nuevo).
-- **`tools/blender/grass_blade_common.py`** (nuevo): saca lo compartido de
-  los dos generadores — el perfil de una hoja (`leaf_verts()`), `place_leaf()`
-  (rota + traslada una hoja completa, ver abajo por qué "completa" importa),
-  setup de escena, material, guardado y render de control. Mismo patrón que
-  `tools/blender_export.py`/`tools/export_blender_asset.py` del proyecto
-  hermano (común importado, no duplicado).
-- **`grass_blade_single.blend`** (renombrado desde `grass_blade.blend`,
-  mismo generador refactorizado sobre el módulo común, geometría sin
-  cambios — 2 hojas cruzadas, 4 triángulos) y **`grass_blade_tuft.blend`**
-  (nuevo, `generate_grass_blade_tuft.py`): 4 hojas radiales
-  (0°/90°/180°/270°) con jitter determinístico (semilla fija 7) de ±10° en
-  ángulo, 0,82–1,05 en escala de alto, 0,06–0,09 en medio-ancho, y un
-  offset de raíz ≤2,5cm — para que no se vea como un molinete perfecto. 8
-  triángulos/instancia (2× la simple). **Corrección real de diseño que hizo
-  la crítica antes de generar la malla:** el plan original decía mover "el
-  punto base" de cada hoja para el offset — eso sólo hubiera desplazado un
-  vértice suelto, no la hoja entera, dejando una esquina colgando en vez de
-  trasladar la forma. `place_leaf()` rota y traslada los 4 vértices de la
-  hoja como una unidad rígida, así el offset realmente cambia dónde nace
-  cada hoja. Verificado con dos renders de control (lateral y oblicuo) antes
-  de integrar — el lateral solo no mostraba el arreglo radial (las hojas
-  quedan casi de canto desde ese ángulo), hizo falta el oblicuo para
-  confirmarlo.
-- **Dos vueltas de corrección real, ninguna encontrada por la crítica ni por
-  los renders de control iniciales — sólo mirando el resultado (el usuario
-  la primera vez, un chequeo nuevo desde arriba la segunda):**
-  1. El diseño original tenía un error más profundo que el del "punto base":
-     `angle_deg` es una rotación alrededor de Z, y `leaf_verts()` pone la
-     punta y la base de cada hoja **sobre** ese mismo eje (x=y=0) — rotar un
-     punto que ya está en su eje de rotación no lo mueve. Las 4 hojas seguían
-     naciendo y terminando en el mismo punto central, sólo la "cintura" se
-     abría un poco: de cualquier ángulo se veía como una columna apelotonada.
-  2. Primer arreglo (`lean_deg`, inclinar la hoja entera alrededor de su eje
-     X local antes de rotar en Z) sí separaba las puntas — pero el usuario
-     aclaró que no era lo pedido: quería 4-5 briznas que **no nazcan del
-     mismo origen** ("como una X" de raíces separadas, para tapar huecos
-     entre briznas vecinas), y que sea la hoja misma la que se doble un poco
-     — sólo el triángulo de arriba, "no mucho" — no toda la hoja inclinada
-     rígida desde la base.
-  - **Arreglo final:** `leaf_verts()` suma `tip_bend` — desplaza sólo la
-    punta en X local, así el triángulo de arriba (punta/cintura) queda en un
-    ángulo leve respecto al de abajo (base/cintura), un quiebre estático de
-    reposo (distinto del arco dinámico del shader de viento). `place_leaf()`
-    ya no inclina la hoja entera — `offset` pasa a ser el separador real: en
-    `generate_grass_blade_tuft.py`, las 4 raíces se plantan en un patrón X de
-    verdad (ángulos 45°/135°/225°/315° + jitter, radio ~9cm — comparable al
-    medio-ancho de la hoja, no unos milímetros) en vez de pivotear desde un
-    centro compartido. Verificado con coordenadas de vértice reales (no sólo
-    con un render): las 4 raíces quedan en los 4 cuadrantes, separadas entre
-    sí, cada punta claramente desplazada de su propia raíz.
-- **`scenes/grass_field_single.tscn`** y **`scenes/grass_field_tuft.tscn`**
-  (nuevas, directo en `scenes/` — sin subcarpeta `components/`, `scenes/`
-  hoy es plana y no valía la pena una convención nueva a mitad de sesión):
-  sólo el nodo `GrassField` con `blade_asset_path` apuntando a su variante.
-  **`scenes/grass_comparison.tscn`** (nueva): instancia las dos, separadas
-  en X (-25 y +25, `field_radius=20` cada una — no se superponen, pasillo
-  libre de 10m en el medio) con el Player en el medio para caminar de una a
-  otra y mirarlas con viento real.
-
-**Validado headless, no jugado (§17):** 95/95 tests (6 nuevos, ver arriba +
-`test_blade_asset_path_rebuilds_live_after_ready` y
-`test_grass_comparison_scene_loads_both_variants`), 8 escenas cargan sin
-error (+3: las dos nuevas componente y la de comparación). Los renders de
-control confirman que ninguna hoja quedó degenerada, pero **no reemplazan
-caminar por `grass_comparison.tscn` con viento real** — pendiente antes de
-elegir una variante (o de decidir seguir con ambas para probar LOD después).
-
-## Punta en V + variante plana + experimento de instancias, 2026-08-15 (misma sesión)
-
-Jugada la comparación de 3 (simple/plana/mata, coloreadas distinto para
-distinguirlas — ver arriba), la diferencia entre variantes "no se nota
-mucho" a ojo. Dos ideas del usuario, ejecutadas con `/iterate-safely`:
-
-**Punta en V en `single`:** `generate_grass_blade_single.py` ahora llama
-`place_leaf(..., tip_bend=0.05)` en los dos planos (antes convergían a un
-único punto en `(0,0,1.0)`). Como los dos planos son perpendiculares por
-construcción, las puntas dobladas quedan en direcciones distintas, no sobre
-la misma línea — no hay elección de signo que lo evite, es inherente a
-cruzar dos planos. Verificado con dos ángulos de render (no sólo el de
-siempre) antes de aceptarlo, y con las coordenadas de vértice reales en
-Godot. `HALF_WIDTH=0.08` confirmado en `grass_blade_common.py` antes de
-elegir `0.05` (mismo orden de magnitud que usa `tuft`). Cubierto por
-`test_single_blade_tip_is_bent_not_a_rigid_spike` (nuevo). Como
-`grass_blade_single.blend` es el default real de `blade_asset_path`, este
-cambio afecta a `scenes/grass_field.tscn` (el nivel principal) además de
-las escenas de comparación — se revisó que ningún test dependiera de la
-forma exacta anterior (sólo cantidades de vértices/superficies).
-
-**Experimento: ¿la mata necesita menos instancias para la misma sensación?**
-`tools/grass_density_probe.gd` medía a igual cantidad de instancias — no es
-la pregunta correcta, importa el presupuesto total de triángulos. Ahora
-`VARIANTS` es una lista de `{name, path, blade_count}` (antes sólo rutas)
-con 3 entradas: `single_3000`, `tuft_3000` (referencia) y `tuft_1500` (la
-mitad de instancias — `8 tris × 1500 = 4 tris × 3000 = 12.000`, mismo costo
-total exacto que `single_3000`). **Bug real que la crítica encontró antes
-de correrlo:** el cálculo de triángulos totales seguía usando una constante
-global fija en vez del `blade_count` de cada entrada — hubiera dado
-`tuft_1500` con el doble de triángulos de los que realmente se dibujaban,
-invalidando exactamente la comparación que el experimento buscaba hacer.
-
-**Resultado medido:** a presupuesto igual, `tuft_1500` cubre *menos*
-píxeles que `single_3000` (0,93× vista de pájaro, 0,97× altura de
-jugador) — la hipótesis de "menos instancias, misma sensación" no se
-sostiene, ni en el número ni mirando las capturas (a mitad de densidad la
-mata deja de cerrar huecos tan convincentemente). El `px/tri` de
-`tuft_1500` mejora respecto a `tuft_3000` (menos solapamiento entre
-instancias vecinas al haber menos de ellas — 3,72 vs. 2,63 vista de
-pájaro) pero sigue sin alcanzar el de `single_3000` (4,01): la eficiencia
-por triángulo más baja de la mata no es sólo un efecto de solapamiento
-entre instancias, es en parte propia de la forma — 4 hojas parcialmente
-tapándose entre sí dentro de una misma instancia rinden menos área única
-por triángulo que 2 planos cruzados bien separados, y reducir instancias
-no cambia eso.
-
-99/99 tests, 9 escenas cargan sin error. Sin decidir ganador todavía —
-falta jugar la punta en V (¿se nota caminando o sigue siendo sutil?) y
-mirar las capturas nuevas en `/tmp/grass_density_probe/`.
+99/99 tests, 6 escenas cargan sin error. **No jugado con el fix de
+distribución ni la punta en V puestos juntos** — pendiente antes de dar
+esto por cerrado del todo.
 
 ## Estado del código, al 2026-08-14
 
@@ -427,52 +279,19 @@ merge (ver auditoría arriba — antes se pisaban).
 
 **Tests: 24 archivos, 99 tests, 99/99 en verde** (`godot --headless -s
 addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15).
-9 escenas cargan headless sin errores (`godot --headless --quit-after`).
+6 escenas cargan headless sin errores (`godot --headless --quit-after`).
 **Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
 particular, los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`,
-y las variantes de brizna modeladas en Blender, todos del 2026-08-15,
-todavía no se jugaron del todo, sólo se verificaron headless.
+y el pasto (brizna + fix de distribución), todos del 2026-08-15, todavía no
+se jugaron del todo, sólo se verificaron headless.
 
 **Git:** repo inicializado 2026-08-14; sesión del 14 (terreno + fix de
 `EntityController` + auditoría de `player_action_stack/`) quedó en 9 commits
 sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
-`scripts/world/`+`debug_overlay.gd`, las 3 variantes de brizna comparables
-(simple/plana/mata) con la investigación de LOD pendiente, y el experimento
-de punta-en-V + presupuesto de triángulos igual. Sin pushear todavía — hace
-el push la persona, no el asistente.
-
-**Medido con `tools/grass_density_probe.gd`** (2026-08-15, campo chico —
-3000 blades, radio 6m — para que quepa en cuadro): la mata es *menos*
-eficiente por triángulo que la simple en las dos vistas (0,67× a vista de
-pájaro, 0,54× a altura de jugador — paga 2× triángulos por instancia por
-menos de 2× de cobertura), pero las capturas a altura de jugador muestran
-algo que ese número no cuenta: la simple deja huecos grandes y contiguos
-entre briznas cerca de cámara, la mata los cierra casi del todo. Sin
-decidir ganador — capturas en `/tmp/grass_density_probe/` (no versionadas).
-
-**Jugado de verdad (F5) y el número no coincidió con la sensación**: la
-diferencia simple/mata "no se nota mucho" caminando por
-`grass_comparison.tscn` — la escena de medición estaba aislada (fondo
-negro, campo chico y cerca) y eso exageraba huecos que a densidad real se
-disimulan. Lección §17 de manual. Hipótesis nueva del usuario: la que sí
-vale la pena probar es la *tercera* dirección — una brizna de **un solo
-plano sin cruzar** (2 triángulos, la mitad de la simple). Riesgo conocido y
-deliberado (no descubierto, anotado antes de generarla): un plano sin
-cruzar se vuelve invisible de canto, y la cámara en tercera persona orbita
-todo el tiempo — un screenshot estático no lo puede mostrar, hace falta
-jugarlo con la cámara moviéndose.
-
-**`grass_blade_flat.blend`** (nuevo, `generate_grass_blade_flat.py`, mismo
-`leaf_verts()`/`place_leaf()` compartido, un solo `place_leaf(angle_deg=0)`)
-+ **`blade_color`** (nuevo `@export` en `GrassField`, pisa el uniform
-`blade_color` del shader — actualiza el material en el lugar, sin rebuild
-completo, mismo patrón que `cast_shadows`) para distinguir las 3 variantes
-a simple vista: simple=verde (default, sin cambios), plano=azul, mata=
-naranja. `grass_comparison.tscn` ahora instancia las 3 (radio 15 c/u, en
-x=-35/0/35, jugador arrancando en z=25 fuera de los tres campos).
-98/98 tests, 9 escenas cargan sin error. Todavía sin jugar esta variante en
-particular — pendiente mirarla girando cámara cerca, el riesgo específico
-que se está probando.
+`scripts/world/`+`debug_overlay.gd` y todo el arco del pasto (brizna
+modelada → exploración de variantes → decisión final + fix de distribución,
+ver sección arriba). Sin pushear todavía — hace el push la persona, no el
+asistente.
 
 ## Próximo foco (propuesto, no comprometido)
 
@@ -481,10 +300,9 @@ que se está probando.
    arreglado, el player debería moverse/reposicionarse con normalidad; probar
    eso primero antes de asumir que algo nuevo está roto.
 2. **Jugar la caja completa** — movimiento, las 4 acciones de combate (con
-   stamina real ahora), horse, escaleras/escalera de mano y `CombatDummy`
-   tras los fixes de hoy, y **caminar `grass_comparison.tscn`** para elegir
-   simple vs. mata (o decidir seguir con ambas) — nada de esto se verificó
-   jugado todavía, sólo headless.
+   stamina real ahora), horse, escaleras/escalera de mano, `CombatDummy` y el
+   pasto con la punta en V + el fix de distribución ya puestos — nada de
+   esto se verificó jugado todavía, sólo headless.
 3. **LOD real cuando haya terreno esculpido donde probarlo**: investigar
    `GeometryInstance3D.visibility_range_begin/end` +
    `visibility_range_fade_mode = FADE_SELF` para el cross-fade entre
