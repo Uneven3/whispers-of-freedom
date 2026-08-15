@@ -72,6 +72,24 @@ func _snap_to_terrain() -> void:
 	var parent := get_parent() as Node3D
 	if parent == null:
 		return
+	if not Engine.is_editor_hint():
+		# Terrain3D's default Dynamic collision mode only generates collision
+		# shapes around whichever camera it's told to track (set_camera());
+		# nothing calls it automatically outside the editor. Its own editor
+		# plugin calls set_camera() on every 3D viewport interaction (see
+		# addons/terrain_3d/src/editor_plugin.gd), which is why sculpting/
+		# testing height in-editor can look fine while a real Play session —
+		# where nothing wires this up — has no collision anywhere and the
+		# capsule falls straight through despite landing at the right height
+		# on spawn. %Camera3D is unique within player.tscn's own scope, same
+		# as SpawnSnap, so no NodePath export needed for it.
+		# get_node_or_null, not the bare %Camera3D shorthand — that throws
+		# instead of returning null when no such unique node exists, which
+		# is the normal case for anything that isn't the real player.tscn
+		# (test doubles, scenes without a Player).
+		var cam: Camera3D = get_node_or_null("%Camera3D") as Camera3D
+		if cam:
+			terrain.call("set_camera", cam)
 	var terrain_data: Object = terrain.get("data")
 	if terrain_data == null:
 		return
