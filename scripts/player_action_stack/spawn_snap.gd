@@ -99,6 +99,14 @@ func _snap_to_terrain() -> void:
 	parent.global_position.y = height + _get_body_half_height() + clearance
 
 func _get_body_half_height() -> float:
+	if Engine.is_editor_hint():
+		# MovementBroker's script isn't @tool, so while editing it's only a
+		# placeholder instance — has_method() still reports get_body_reader()
+		# (placeholders keep the declared API surface), but actually calling
+		# it throws ("Attempt to call a method on a placeholder instance.
+		# Check if the script is in tool mode."). Skip the call outright
+		# rather than let has_method() lie about it being safe.
+		return _DEFAULT_HALF_HEIGHT
 	var broker: Node = get_node_or_null(body_reader_source)
 	if broker == null or not broker.has_method("get_body_reader"):
 		return _DEFAULT_HALF_HEIGHT
