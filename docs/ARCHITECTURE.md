@@ -59,7 +59,7 @@ Código que viole estas leyes no se implementa ni mergea.
 
   # SÍ — getter directo, cero ceremonia extra
   func get_stamina_pct() -> float:
-      return _stamina.get_current() / _stamina.get_max()
+  	return _stamina.get_current() / _stamina.get_max()
   ```
 - **§11** Sin ticks implícitos: todo script que sobreescribe `_process`/
   `_physics_process` llama `set_*_process(false)` en `_ready()` salvo que
@@ -101,11 +101,11 @@ Código que viole estas leyes no se implementa ni mergea.
   ```gdscript
   # NO
   func drain(amount):
-      current -= amount
+  	current -= amount
 
   # SÍ
   func drain(amount: float) -> void:
-      current -= amount
+  	current -= amount
   ```
 - **§19** `%NombreÚnico` cuando comparten owner dentro del mismo `.tscn` (no
   cruza el límite de una escena instanciada — `scene_unique_nodes.html`);
@@ -127,20 +127,20 @@ PreUpdate  Input:  hardware → Brain (Input.* vive sólo en *Brain.gd, §7)
 
 _physics_process (MovementBroker, dueño del loop, §11):
   1. Brain.get_intents()                 → Intents (struct compartido,
-                                            movimiento + combate)
+											movimiento + combate)
   2. Services.update_facts(body_reader)   → GroundService/LedgeService/
-                                            StairsService/LadderService
+											StairsService/LadderService
   3. Drena proposals externos (FORCED,    → inyectados el frame anterior
-     de inject_forced_proposal)             por EntityController
+	 de inject_forced_proposal)             por EntityController
   4. Cada Motor.gather_proposals(...)     → corren todos, sólo proponen
   5. Arbitraje: mejor por (Priority,      → LocomotionState.set_state()
-     override_weight), único escritor       (§9) — dispara on_deactivate/
-                                            on_activate en el borde
+	 override_weight), único escritor       (§9) — dispara on_deactivate/
+											on_activate en el borde
   6. Motor activo .tick(...)              → único que mueve el Body (§8/§13)
   7. physics_tick_complete.emit(intents,  → dispara CombatBroker.tick()
-     current_mode)                          vía EntityController — combate
-                                            resuelve golpes con posición
-                                            YA post-movimiento
+	 current_mode)                          vía EntityController — combate
+											resuelve golpes con posición
+											YA post-movimiento
 ```
 
 `EntityController` es el único suscriptor de señales hacia arriba de
