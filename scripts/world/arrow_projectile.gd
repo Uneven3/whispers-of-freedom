@@ -69,9 +69,7 @@ func _face_velocity() -> void:
 
 func _hit_target(hit: Dictionary) -> void:
 	var collider := hit.get("collider") as Node
-	var target := collider
-	if target and not target.has_method("apply_damage") and target.get_parent():
-		target = target.get_parent()
+	var target := DamageEventScript.resolve_receiver(collider)
 	if target and target.has_method("apply_damage") and target is Node3D:
 		var event := DamageEventScript.new(
 			_source,

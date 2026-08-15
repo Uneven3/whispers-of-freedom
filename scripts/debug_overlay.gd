@@ -15,8 +15,10 @@ func _input(event: InputEvent) -> void:
 		_update_visibility()
 
 func register_context(context: BaseDebugContext) -> void:
-	if context.panel_key >= 0:
-		_contexts[context.panel_key] = context
+	if context.panel_key < 0:
+		push_warning("context '%s' has no panel_key set — its push() calls will be dropped" % context.name)
+		return
+	_contexts[context.panel_key] = context
 
 func push(context_key: int, data: Dictionary) -> void:
 	if not OS.is_debug_build() or not panel_visible:

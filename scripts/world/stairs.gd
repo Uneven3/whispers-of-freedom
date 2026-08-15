@@ -21,9 +21,10 @@ extends Area3D
 @export var step_rise: float = 0.25  ## Vertical rise of one riser, metres
 
 func _ready() -> void:
-	add_to_group("stairs")
 	if base_marker == null or top_marker == null:
 		push_error("Stairs '%s' is missing a BaseMarker or TopMarker child — stairs disabled." % name)
+		return
+	add_to_group("stairs")
 
 ## Unit vector along the stairs in the horizontal plane (Y stripped).
 func get_slope_horizontal_axis() -> Vector3:

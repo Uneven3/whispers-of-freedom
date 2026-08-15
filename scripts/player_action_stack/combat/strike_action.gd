@@ -90,7 +90,7 @@ func tick(intents: Intents, delta: float, broker: Node) -> void:
 		_strike_in_progress = true
 		
 		# Rotate body to look at target immediately
-		var body: CharacterBody3D = body_reader._body
+		var body: CharacterBody3D = body_reader.get_body()
 		if body:
 			var to_target = (target.global_position - body.global_position)
 			to_target.y = 0.0

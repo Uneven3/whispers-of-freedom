@@ -2,10 +2,14 @@ class_name BodyReader
 extends RefCounted
 
 var _body: CharacterBody3D
+var _warned_no_capsule: bool = false
 
 func _init(body: CharacterBody3D) -> void:
 	assert(body is CharacterBody3D, "BodyReader requires a CharacterBody3D")
 	_body = body
+
+func get_body() -> CharacterBody3D:
+	return _body
 
 func get_global_position() -> Vector3:
 	return _body.global_position
@@ -33,6 +37,7 @@ func get_floor_normal() -> Vector3:
 func get_body_half_height() -> float:
 	var capsule := _get_capsule_shape()
 	if capsule == null:
+		_warn_no_capsule_once()
 		return 1.0
 	var b := _get_shape_basis()
 	# Vertical (Y) half-extent of the rotated capsule: sum of each local
@@ -44,6 +49,7 @@ func get_body_half_height() -> float:
 func get_body_radius() -> float:
 	var capsule := _get_capsule_shape()
 	if capsule == null:
+		_warn_no_capsule_once()
 		return 0.5
 	var b := _get_shape_basis()
 	# Horizontal half-extent: max of the world X and Z projections of the
@@ -53,6 +59,12 @@ func get_body_radius() -> float:
 	var ext_x := absf(b.x.x) * r + absf(b.y.x) * half + absf(b.z.x) * r
 	var ext_z := absf(b.x.z) * r + absf(b.y.z) * half + absf(b.z.z) * r
 	return maxf(ext_x, ext_z)
+
+func _warn_no_capsule_once() -> void:
+	if _warned_no_capsule:
+		return
+	_warned_no_capsule = true
+	push_warning("Body '%s' has no CapsuleShape3D CollisionShape3D — falling back to default capsule geometry" % _body.name)
 
 func _get_capsule_shape() -> CapsuleShape3D:
 	var shape_node := _get_shape_node()

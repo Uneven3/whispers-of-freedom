@@ -92,6 +92,4 @@ func _end_telegraph() -> void:
 func _flash(color: Color) -> void:
 	if not _mesh:
 		return
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	_mesh.material_override = material
+	_base_material.albedo_color = color

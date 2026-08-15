@@ -143,6 +143,66 @@ memoria y no siempre recoge cambios externos al archivo — ya nos mordió con
 script viejo). Si algo no refleja un cambio reciente: reiniciar Godot del
 todo, no sólo recargar la escena, antes de asumir que el código está mal.
 
+## Auditoría `/code-review` sobre `scripts/base/` + `scripts/world/` + `debug_overlay.gd`, 2026-08-15
+
+Segunda auditoría, esta vez sobre los 14 archivos que quedaron fuera del
+barrido de `player_action_stack/` de ayer (ver mapa de módulos en
+`ARCHITECTURE.md`). Ejecutada con `/iterate-safely`: plan de scope
+(archivos + leyes a chequear) → crítica de un subagente sin contexto previo
+→ triage → `/code-review` → triage de los hallazgos → fix → tests.
+
+**De paso, encontrado por la crítica antes de arrancar:** `attach_scripts.gd`
+en la raíz del repo — tooling muerto del commit inicial, cero referencias,
+`NodePath`s ya desactualizados contra la estructura actual de escenas.
+Borrado.
+
+**9 hallazgos del audit, 8 reales arreglados, 1 descartado por precedente
+del propio repo** (mensaje `"Ladder '%s' is missing..."` con el nombre de
+clase como sujeto de oración, no como prefijo `"Clase: mensaje"` — la
+auditoría de ayer dejó ese patrón exacto sin tocar en `movement_broker.gd`/
+`camera_rig.gd`, verificado con `git log -p` antes de descartar):
+
+- **Bug real, mismo patrón que el crash de `EntityController` de ayer:**
+  `Ladder`/`Stairs._ready()` llamaban `add_to_group()` **antes** de
+  chequear si faltaban los nodos marcador, así que un `Ladder`/`Stairs` mal
+  armado en el editor igual quedaba descubrible por
+  `LadderService`/`StairsService` — el `push_error` decía "disabled" pero
+  nada lo deshabilitaba. `LadderMotor.tick()`/`StairsMotor.tick()` derefencian
+  los markers sin guardia → crash real la primera vez que el jugador entra.
+  Arreglado: el guard corta antes de `add_to_group()`. Cubierto por
+  `test_ladder_stairs.gd` (nuevo).
+- **§10 (Reader como fachada real):** `BodyReader._body` no tenía getter
+  público — `combat_broker.gd`, `bow_action.gd`, `strike_action.gd` lo leían
+  directo, rompiendo la encapsulación que el propio Reader existe para dar.
+  Agregado `get_body()`, los 3 call sites migrados.
+- **§5 (fallo alcanzable sin log):** `DebugOverlay.register_context()`
+  descartaba en silencio un context con `panel_key` en su default `-1` (p.ej.
+  olvidado en el Inspector) — ahora `push_warning`. Cubierto por
+  `test_debug_overlay.gd` (nuevo).
+- `BodyReader.get_body_half_height()`/`get_body_radius()` caían en silencio a
+  los defaults del player (1.0/0.5) si el `CollisionShape3D` no tenía
+  `CapsuleShape3D` — ahora avisan una vez por instancia (`_warned_no_capsule`,
+  no por frame — se llaman en el `tick()` de `StairsMotor`).
+- **Duplicación real:** el fallback "si el collider no tiene `apply_damage`,
+  probar el padre" vivía copiado en `combat_broker.gd` y
+  `arrow_projectile.gd` — unificado en `DamageEvent.resolve_receiver()`
+  (`scripts/base/`) para que golpe cuerpo a cuerpo y flecha no puedan
+  divergir. Cubierto por `test_damage_event.gd` (nuevo).
+- `transition_proposal.gd` estaba indentado con espacios en vez de tabs
+  (único archivo de `scripts/` así) — corregido.
+- `CombatDummy._flash()` creaba un `StandardMaterial3D` nuevo en cada golpe/
+  telegraph en vez de reusar el `_base_material` ya creado en `_ready()` —
+  ahora muta `albedo_color` sobre el mismo material.
+
+**Validado headless, no jugado (§17):** 89/89 tests (`godot --headless -s
+addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`), 5 escenas cargan sin
+error. `Ladder`/`Stairs`/`CombatDummy`/`ArrowProjectile`/`GrassField`
+interactúan con física/rendering real en runtime — ninguno de estos 8 fixes
+se jugó todavía, sólo se verificó headless. Pendiente antes de cerrar: subir
+una escalera y una escalera de mano reales, y pegarle a un `CombatDummy` con
+las 4 acciones, para confirmar que el arreglo del guard no cambió el feel de
+nada que ya andaba.
+
 ## Estado del código, al 2026-08-14
 
 Validado headless: 79/79 tests, 5 escenas cargan sin errores
@@ -178,15 +238,18 @@ separadas, no una migró a la otra todavía.
 Movement y Combat vía `BaseDebugContext`/`panel_key`, mismo panel, hacen
 merge (ver auditoría arriba — antes se pisaban).
 
-**Tests: 20 archivos, 79 tests, 79/79 en verde** (`godot --headless -s
-addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido esta sesión).
+**Tests: 23 archivos, 89 tests, 89/89 en verde** (`godot --headless -s
+addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15).
 5 escenas cargan headless sin errores (`godot --headless --quit-after`).
 **Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
-particular todavía no se jugó, sólo se verificó headless.
+particular, y los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`
+del 2026-08-15, todavía no se jugaron, sólo se verificaron headless.
 
-**Git:** repo inicializado 2026-08-14; esta sesión (terreno + fix de
-`EntityController` + auditoría) quedó en 9 commits separados sobre el pivote,
-sin pushear todavía — hace el push la persona, no el asistente.
+**Git:** repo inicializado 2026-08-14; sesión del 14 (terreno + fix de
+`EntityController` + auditoría de `player_action_stack/`) quedó en 9 commits
+sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
+`scripts/world/`+`debug_overlay.gd`. Sin pushear todavía — hace el push la
+persona, no el asistente.
 
 ## Próximo foco (propuesto, no comprometido)
 
@@ -195,8 +258,9 @@ sin pushear todavía — hace el push la persona, no el asistente.
    arreglado, el player debería moverse/reposicionarse con normalidad; probar
    eso primero antes de asumir que algo nuevo está roto.
 2. **Jugar la caja completa** — movimiento, las 4 acciones de combate (con
-   stamina real ahora), horse — nada de esto se verificó jugado todavía,
-   sólo headless.
+   stamina real ahora), horse, escaleras/escalera de mano y `CombatDummy`
+   tras los fixes de hoy — nada de esto se verificó jugado todavía, sólo
+   headless.
 3. Corregir la violación de §14 en `strike_action.gd` (llama
    `inject_forced_proposal()` directo en vez de señal-hacia-arriba +
    `EntityController` reenvía) — antes de que otro sistema copie el patrón.

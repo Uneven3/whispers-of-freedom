@@ -42,7 +42,7 @@ func _fire_arrow(intents: Intents, broker: Node) -> bool:
 		right = Vector3.RIGHT
 	var muzzle_origin := body_reader.get_global_position() + Vector3.UP * 1.25 + right * 0.42 + aim_direction * 0.45
 	arrow.launch(
-		body_reader._body,
+		body_reader.get_body(),
 		muzzle_origin,
 		aim_direction,
 		projectile_speed,

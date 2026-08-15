@@ -100,11 +100,9 @@ func apply_damage(
 ) -> RefCounted:
 	if not target:
 		return null
-	var source_node: Node3D = _body_reader._body if _body_reader else target
+	var source_node: Node3D = _body_reader.get_body() if _body_reader else target
 	var event: RefCounted = DamageEventScript.new(source_node, target, amount, damage_type, stagger_class, hit_position)
-	var receiver: Node = target
-	if not receiver.has_method("apply_damage") and target.get_parent():
-		receiver = target.get_parent()
+	var receiver: Node = DamageEventScript.resolve_receiver(target)
 	if receiver.has_method("apply_damage"):
 		receiver.apply_damage(event)
 	_last_hit = event

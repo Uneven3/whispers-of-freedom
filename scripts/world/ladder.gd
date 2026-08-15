@@ -11,9 +11,10 @@ extends Area3D
 @onready var top_marker: Node3D = $TopMarker
 
 func _ready() -> void:
-	add_to_group("ladder")
 	if bottom_marker == null or top_marker == null:
 		push_error("Ladder '%s' is missing a BottomMarker or TopMarker child — ladder disabled." % name)
+		return
+	add_to_group("ladder")
 
 func get_top_y() -> float:
 	return top_marker.global_position.y
