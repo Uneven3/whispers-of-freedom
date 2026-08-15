@@ -49,6 +49,13 @@ extends Node3D
 		cast_shadows = value
 		if _mmi:
 			_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if not value else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+## Which Blender-authored blade mesh to instance — swap this to compare blade
+## variants (single crossed-leaf vs. tuft) without touching code. See
+## tools/blender/generate_grass_blade_*.py.
+@export_file("*.blend") var blade_asset_path: String = "res://art/blender/grass/grass_blade_single.blend":
+	set(value):
+		blade_asset_path = value
+		_queue_rebuild()
 
 var _mmi: MultiMeshInstance3D
 var _blade_positions: Array[Vector2] = []
@@ -148,12 +155,13 @@ func _build_field() -> void:
 	add_child(_mmi)
 
 ## Blender-authored crossed-leaf blade (two crossed planes, pointed at tip and
-## sunk base, waist row at 30% height — see tools/blender/generate_grass_blade.py
-## and art/blender/grass/grass_blade.blend). Cached per-process since the base
-## shape never changes between Inspector rebuilds — only max_blade_height does.
-const BLADE_ASSET_PATH := "res://art/blender/grass/grass_blade.blend"
-static var _cached_base_mesh: ArrayMesh
-static var _load_failed: bool = false
+## sunk base, waist row at 30% height — see tools/blender/generate_grass_blade_*.py
+## and art/blender/grass/grass_blade_*.blend). Cached per-process and per-path
+## (several GrassField instances can point at different blade_asset_path
+## values, e.g. scenes/grass_comparison.tscn) since a given asset's base shape
+## never changes between Inspector rebuilds — only max_blade_height does.
+static var _cached_base_meshes: Dictionary = {}
+static var _load_failed_paths: Dictionary = {}
 
 func _build_blade_mesh() -> Mesh:
 	var base := _load_base_blade_mesh()
@@ -161,28 +169,31 @@ func _build_blade_mesh() -> Mesh:
 		return _build_fallback_blade_mesh()
 	return _rescaled_blade_mesh(base, max_blade_height)
 
-## Loads and caches the unit-height (1.0 m) blade mesh from the .blend asset.
-## Returns null (and warns once) if the asset can't be loaded — e.g. Blender's
-## path isn't configured in Editor Settings > Filesystem > Import > Blender on
-## this machine (see "Cómo trabajar en este repo" in docs/AHORA.md).
+## Loads and caches the unit-height (1.0 m) blade mesh from blade_asset_path.
+## Returns null (and warns once per path) if the asset can't be loaded — e.g.
+## Blender's path isn't configured in Editor Settings > Filesystem > Import >
+## Blender on this machine (see "Cómo trabajar en este repo" in docs/AHORA.md).
 func _load_base_blade_mesh() -> ArrayMesh:
-	if _cached_base_mesh or _load_failed:
-		return _cached_base_mesh
-	var packed: PackedScene = load(BLADE_ASSET_PATH)
+	if _cached_base_meshes.has(blade_asset_path):
+		return _cached_base_meshes[blade_asset_path]
+	if _load_failed_paths.has(blade_asset_path):
+		return null
+	var packed: PackedScene = load(blade_asset_path)
 	if packed == null:
-		_load_failed = true
-		push_warning("could not load '%s' — falling back to the procedural blade (configure Editor Settings > Filesystem > Import > Blender > Blender Path, see docs/AHORA.md)" % BLADE_ASSET_PATH)
+		_load_failed_paths[blade_asset_path] = true
+		push_warning("could not load '%s' — falling back to the procedural blade (configure Editor Settings > Filesystem > Import > Blender > Blender Path, see docs/AHORA.md)" % blade_asset_path)
 		return null
 	var inst := packed.instantiate()
 	var mesh_node := _find_mesh_instance(inst)
 	if mesh_node == null or mesh_node.mesh == null:
-		_load_failed = true
-		push_warning("'%s' has no usable MeshInstance3D — falling back to the procedural blade" % BLADE_ASSET_PATH)
+		_load_failed_paths[blade_asset_path] = true
+		push_warning("'%s' has no usable MeshInstance3D — falling back to the procedural blade" % blade_asset_path)
 		inst.free()
 		return null
-	_cached_base_mesh = mesh_node.mesh as ArrayMesh
+	var mesh := mesh_node.mesh as ArrayMesh
+	_cached_base_meshes[blade_asset_path] = mesh
 	inst.free()
-	return _cached_base_mesh
+	return mesh
 
 func _find_mesh_instance(node: Node) -> MeshInstance3D:
 	if node is MeshInstance3D:

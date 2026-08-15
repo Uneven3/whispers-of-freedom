@@ -232,8 +232,9 @@ ejecutando, que la primera versión de la geometría estaba tumbada de costado
 nativo, no Y — corregido y confirmado con un render de control antes de
 integrarla).
 
-**Geometría:** `tools/blender/generate_grass_blade.py` (bpy, corrido
-headless) reemplaza el quad-cruzado rectangular de
+**Geometría:** `tools/blender/generate_grass_blade_single.py` (bpy, corrido
+headless — renombrado el 2026-08-15 al sumar la variante mata, ver abajo)
+reemplaza el quad-cruzado rectangular de
 `grass_field.gd::_build_blade_mesh()` (dos planos perpendiculares, 4
 vértices/2 triángulos cada uno, ancho fijo) por la forma de "hoja"
 investigada y medida en el proyecto hermano `breath-of-freedom`
@@ -251,10 +252,10 @@ campo ni el shader de viento (`grass_blade.gdshader`, que ya sólo depende de
 freedom exporta a `.glb` con un validador de nomenclatura específico de Bevy
 (`SM_/SK_/ROOT_/bof_*`) que no aplica acá — pedido explícito del usuario
 ("pensá uno mejor que se adapte a Godot") tras leer ese pipeline. Acá Godot
-importa el `.blend` directo y nativo (`art/blender/grass/grass_blade.blend`,
+importa el `.blend` directo y nativo (`art/blender/grass/grass_blade_single.blend`,
 versionado — es chico, sin texturas). El generador también renderiza un PNG
-de control (`art/blender/grass/grass_blade_preview.png`) sin abrir Blender
-ni Godot, para poder mirar la forma antes de integrarla.
+de control (`art/blender/grass/grass_blade_single_preview.png`) sin abrir
+Blender ni Godot, para poder mirar la forma antes de integrarla.
 
 **Integración en `grass_field.gd`:** `_load_base_blade_mesh()` carga y
 cachea (`static var`, una vez por proceso — evita reinstanciar la escena
@@ -274,6 +275,83 @@ construyendo, con warning y sin error).
 cargan sin error. El render de control confirma la silueta pero **no
 reemplaza verlo en el campo real** con viento, densidad e iluminación —
 pendiente jugarlo antes de dar esto por terminado.
+
+## Dos variantes de brizna para comparar + LOD como próximo tema, 2026-08-15 (misma sesión)
+
+Tras jugar el campo (F5, `grass_field.tscn`), el usuario pidió una brizna que
+"ocupe un poco más de espacio" y planteó, aparte, el problema que no logró
+resolver en `breath-of-freedom`: transiciones de LOD visibles. Hipótesis del
+usuario: la causa era usar briznas individuales en vez de "un modelo
+estándar con medidas bien calculadas". Contraargumento dado (no
+implementado, para la próxima sesión de LOD real): en la industria una
+transición de LOD se nota casi siempre por el *mecanismo del corte* (un
+plano de distancia fijo donde todo cambia de golpe) y por no preservar
+densidad/cobertura entre niveles — no por la precisión de la malla de
+origen. La lección real de `docs/reference/breath-of-freedom/BOTWGrass.md`
+(#9-11: el footprint promedio subestimado 2,83× rompía la cobertura al
+cambiar de nivel) apoya la parte de "medir bien", pero a nivel de fórmula de
+densidad agregada, no de brizna individual. Godot trae nativo lo que
+`breath-of-freedom` tuvo que reinventar en WGSL: `GeometryInstance3D.
+visibility_range_begin/end` + `visibility_range_fade_mode = FADE_SELF` hace
+cross-fade con dither entre niveles sin lógica custom — **no implementado
+todavía**, queda pendiente para cuando haya terreno real donde probarlo a
+distancia.
+
+**Mientras tanto, para decidir con los ojos y no a ciegas:** dos variantes
+de brizna instanciables por separado, comparten `grass_field.gd` sin
+duplicar el mecanismo (viento, instanciado, clumps) — sólo cambia qué malla
+cargan. Ejecutado con `/iterate-safely`.
+
+- `blade_asset_path` (nuevo `@export_file("*.blend")` en `GrassField`,
+  reemplaza la constante `BLADE_ASSET_PATH` fija) hace la malla-brizna
+  intercambiable por Inspector. **Bug real que el propio refactor iba a
+  introducir, encontrado por la crítica antes de escribir código:** el
+  caché (`static var`, compartido entre instancias del mismo proceso — ej.
+  el test suite entero) era una sola malla/flag, no por-path — dos
+  `GrassField` con `blade_asset_path` distinto se hubieran pisado, el
+  segundo recibiendo la malla del primero. Arreglado con
+  `_cached_base_meshes`/`_load_failed_paths` como `Dictionary` keyeado por
+  `blade_asset_path`. Cubierto por
+  `test_blade_asset_path_caching_does_not_leak_across_variants` (nuevo).
+- **`tools/blender/grass_blade_common.py`** (nuevo): saca lo compartido de
+  los dos generadores — el perfil de una hoja (`leaf_verts()`), `place_leaf()`
+  (rota + traslada una hoja completa, ver abajo por qué "completa" importa),
+  setup de escena, material, guardado y render de control. Mismo patrón que
+  `tools/blender_export.py`/`tools/export_blender_asset.py` del proyecto
+  hermano (común importado, no duplicado).
+- **`grass_blade_single.blend`** (renombrado desde `grass_blade.blend`,
+  mismo generador refactorizado sobre el módulo común, geometría sin
+  cambios — 2 hojas cruzadas, 4 triángulos) y **`grass_blade_tuft.blend`**
+  (nuevo, `generate_grass_blade_tuft.py`): 4 hojas radiales
+  (0°/90°/180°/270°) con jitter determinístico (semilla fija 7) de ±10° en
+  ángulo, 0,82–1,05 en escala de alto, 0,06–0,09 en medio-ancho, y un
+  offset de raíz ≤2,5cm — para que no se vea como un molinete perfecto. 8
+  triángulos/instancia (2× la simple). **Corrección real de diseño que hizo
+  la crítica antes de generar la malla:** el plan original decía mover "el
+  punto base" de cada hoja para el offset — eso sólo hubiera desplazado un
+  vértice suelto, no la hoja entera, dejando una esquina colgando en vez de
+  trasladar la forma. `place_leaf()` rota y traslada los 4 vértices de la
+  hoja como una unidad rígida, así el offset realmente cambia dónde nace
+  cada hoja. Verificado con dos renders de control (lateral y oblicuo) antes
+  de integrar — el lateral solo no mostraba el arreglo radial (las hojas
+  quedan casi de canto desde ese ángulo), hizo falta el oblicuo para
+  confirmarlo.
+- **`scenes/grass_field_single.tscn`** y **`scenes/grass_field_tuft.tscn`**
+  (nuevas, directo en `scenes/` — sin subcarpeta `components/`, `scenes/`
+  hoy es plana y no valía la pena una convención nueva a mitad de sesión):
+  sólo el nodo `GrassField` con `blade_asset_path` apuntando a su variante.
+  **`scenes/grass_comparison.tscn`** (nueva): instancia las dos, separadas
+  en X (-25 y +25, `field_radius=20` cada una — no se superponen, pasillo
+  libre de 10m en el medio) con el Player en el medio para caminar de una a
+  otra y mirarlas con viento real.
+
+**Validado headless, no jugado (§17):** 95/95 tests (6 nuevos, ver arriba +
+`test_blade_asset_path_rebuilds_live_after_ready` y
+`test_grass_comparison_scene_loads_both_variants`), 8 escenas cargan sin
+error (+3: las dos nuevas componente y la de comparación). Los renders de
+control confirman que ninguna hoja quedó degenerada, pero **no reemplazan
+caminar por `grass_comparison.tscn` con viento real** — pendiente antes de
+elegir una variante (o de decidir seguir con ambas para probar LOD después).
 
 ## Estado del código, al 2026-08-14
 
@@ -310,19 +388,20 @@ separadas, no una migró a la otra todavía.
 Movement y Combat vía `BaseDebugContext`/`panel_key`, mismo panel, hacen
 merge (ver auditoría arriba — antes se pisaban).
 
-**Tests: 24 archivos, 92 tests, 92/92 en verde** (`godot --headless -s
+**Tests: 24 archivos, 95 tests, 95/95 en verde** (`godot --headless -s
 addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15).
-5 escenas cargan headless sin errores (`godot --headless --quit-after`).
+8 escenas cargan headless sin errores (`godot --headless --quit-after`).
 **Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
 particular, los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`,
-y la brizna modelada en Blender, todos del 2026-08-15, todavía no se
-jugaron, sólo se verificaron headless.
+y las dos variantes de brizna modeladas en Blender, todos del 2026-08-15,
+todavía no se jugaron, sólo se verificaron headless.
 
 **Git:** repo inicializado 2026-08-14; sesión del 14 (terreno + fix de
 `EntityController` + auditoría de `player_action_stack/`) quedó en 9 commits
 sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
-`scripts/world/`+`debug_overlay.gd` y la brizna modelada en Blender. Sin
-pushear todavía — hace el push la persona, no el asistente.
+`scripts/world/`+`debug_overlay.gd`, la brizna modelada en Blender, y las
+dos variantes comparables (simple/mata) + la investigación de LOD que quedó
+pendiente. Sin pushear todavía — hace el push la persona, no el asistente.
 
 ## Próximo foco (propuesto, no comprometido)
 
@@ -332,12 +411,16 @@ pushear todavía — hace el push la persona, no el asistente.
    eso primero antes de asumir que algo nuevo está roto.
 2. **Jugar la caja completa** — movimiento, las 4 acciones de combate (con
    stamina real ahora), horse, escaleras/escalera de mano y `CombatDummy`
-   tras los fixes de hoy, y **mirar la brizna nueva en el campo real** (viento,
-   densidad, luz — el render de control sólo mostró la silueta aislada) —
-   nada de esto se verificó jugado todavía, sólo headless.
-3. Corregir la violación de §14 en `strike_action.gd` (llama
+   tras los fixes de hoy, y **caminar `grass_comparison.tscn`** para elegir
+   simple vs. mata (o decidir seguir con ambas) — nada de esto se verificó
+   jugado todavía, sólo headless.
+3. **LOD real cuando haya terreno esculpido donde probarlo**: investigar
+   `GeometryInstance3D.visibility_range_begin/end` +
+   `visibility_range_fade_mode = FADE_SELF` para el cross-fade entre
+   niveles de densidad — discutido esta sesión, nada implementado todavía.
+4. Corregir la violación de §14 en `strike_action.gd` (llama
    `inject_forced_proposal()` directo en vez de señal-hacia-arriba +
    `EntityController` reenvía) — antes de que otro sistema copie el patrón.
-4. Decidir la premisa de mundo/narrativa (`NORTE.md` → Decisiones abiertas)
+5. Decidir la premisa de mundo/narrativa (`NORTE.md` → Decisiones abiertas)
    y la licencia del proyecto — ambas quedaron abiertas al pivotear lejos de
    Druid.

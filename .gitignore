@@ -21,3 +21,6 @@ addons/terrain_3d/
 
 # Blender auto-save backups (source .blend files under art/ are versioned).
 *.blend1
+
+# Python bytecode cache from running tools/blender/*.py through Blender.
+__pycache__/

@@ -114,6 +114,48 @@ func test_fallback_blade_mesh_is_still_valid_if_asset_missing():
 	assert_eq(mesh.get_surface_count(), 2, "fallback is the flat crossed-quad, 2 surfaces")
 	assert_not_null(mesh.surface_get_material(0), "fallback still carries the wind shader material")
 
+func test_blade_asset_path_caching_does_not_leak_across_variants():
+	var single := _build_field()
+	single.blade_asset_path = "res://art/blender/grass/grass_blade_single.blend"
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var tuft := _build_field()
+	tuft.blade_asset_path = "res://art/blender/grass/grass_blade_tuft.blend"
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var single_verts: PackedVector3Array = single.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var tuft_verts: PackedVector3Array = tuft.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_eq(single_verts.size(), 8, "single variant keeps its own 2-leaf mesh (8 verts), not the tuft's cached one")
+	assert_eq(tuft_verts.size(), 16, "tuft variant keeps its own 4-leaf mesh (16 verts), not the single's cached one")
+
+func test_blade_asset_path_rebuilds_live_after_ready():
+	var field := _build_field()
+	await get_tree().process_frame
+	field.blade_asset_path = "res://art/blender/grass/grass_blade_tuft.blend"
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var verts: PackedVector3Array = field.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_eq(verts.size(), 16, "editing blade_asset_path after _ready rebuilds without a scene restart")
+
+func test_grass_comparison_scene_loads_both_variants():
+	var ps: PackedScene = load("res://scenes/grass_comparison.tscn")
+	assert_not_null(ps, "grass_comparison.tscn should load")
+	var scene := ps.instantiate()
+	add_child_autofree(scene)
+	await get_tree().process_frame
+	assert_not_null(scene.get_node_or_null("Player"), "player instanced in comparison scene")
+
+	var single: Node = scene.get_node_or_null("GrassSingle")
+	var tuft: Node = scene.get_node_or_null("GrassTuft")
+	assert_not_null(single, "single-blade GrassField instanced")
+	assert_not_null(tuft, "tuft-blade GrassField instanced")
+
+	var single_verts: PackedVector3Array = single.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var tuft_verts: PackedVector3Array = tuft.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_eq(single_verts.size(), 8, "GrassSingle really uses the single-leaf asset")
+	assert_eq(tuft_verts.size(), 16, "GrassTuft really uses the tuft asset")
+
 func test_grass_field_scene_loads_with_player():
 	var ps: PackedScene = load("res://scenes/grass_field.tscn")
 	assert_not_null(ps, "grass_field.tscn should load")

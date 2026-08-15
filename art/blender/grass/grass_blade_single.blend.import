@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://drjg4oyvdh8jv"
-path="res://.godot/imported/grass_blade.blend-5b8f296186df8d84850a5f3245454dae.scn"
+path="res://.godot/imported/grass_blade_single.blend-287d40e6a7158a25ec12761ae318fd27.scn"
 
 [deps]
 
-source_file="res://art/blender/grass/grass_blade.blend"
-dest_files=["res://.godot/imported/grass_blade.blend-5b8f296186df8d84850a5f3245454dae.scn"]
+source_file="res://art/blender/grass/grass_blade_single.blend"
+dest_files=["res://.godot/imported/grass_blade_single.blend-287d40e6a7158a25ec12761ae318fd27.scn"]
 
 [params]
 
