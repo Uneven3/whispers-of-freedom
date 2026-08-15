@@ -9,6 +9,15 @@ total, the baseline blade shape used by GrassField's blade_asset_path default
 (Editor Settings -> Filesystem -> Import -> Blender -> Blender Path must be
 configured locally, see "Como trabajar en este repo" in docs/AHORA.md).
 
+Both planes carry a small tip_bend so the top no longer converges to one
+exact shared point (0,0,TIP_HEIGHT) -- a slight "V" instead of a rigid
+single spike. Since the two planes are perpendicular by construction, their
+bent tips land on two different (roughly perpendicular) directions, not the
+same line -- there's no sign choice that avoids that, it's inherent to
+crossing two planes. Checked with both the default oblique preview and an
+extra top-down render before trusting it (a single angle wouldn't show
+whether the asymmetry reads as a natural fork or something lopsided).
+
 Correct outward normals + flat shading are set even though
 scripts/world/grass_blade.gdshader is unshaded/cull_disabled today (it never
 reads NORMAL) -- standard low-poly practice, matters if this .blend is opened
@@ -36,8 +45,8 @@ NAME = "grass_blade_single"
 
 def build_mesh() -> bpy.types.Object:
     bm = bmesh.new()
-    place_leaf(bm, angle_deg=0.0)
-    place_leaf(bm, angle_deg=90.0)
+    place_leaf(bm, angle_deg=0.0, tip_bend=0.05)
+    place_leaf(bm, angle_deg=90.0, tip_bend=0.05)
 
     mesh = bpy.data.meshes.new("GrassBladeCross")
     bm.to_mesh(mesh)

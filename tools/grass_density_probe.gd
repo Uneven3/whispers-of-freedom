@@ -17,16 +17,15 @@ extends SceneTree
 ## blank). Run from the repo root with a real display available:
 ##   godot --path . -s tools/grass_density_probe.gd
 ##
-## Renders each variant, from two camera angles, alone against a solid black
-## background. Two angles because a single number can be misleading: a
-## bird's-eye view (mostly canopy/top coverage) and a walking-height view
-## (closer to how CameraRig's actual third-person camera sees grass) can
-## favor different blade designs. The blade shader is unshaded
-## (grass_blade.gdshader: ALBEDO = blade_color.rgb, no lighting), so every
-## grass pixel is a constant flat color -- "not background" is an exact
-## classification here, not a fuzzy heuristic. Triangle count is read from
-## each mesh's own index array, not hardcoded, so this stays correct if
-## either asset's geometry changes later.
+## Renders each entry in VARIANTS, from two camera angles, alone against a
+## solid black background. Two angles because a single number can be
+## misleading: a bird's-eye view and a walking-height view (closer to
+## CameraRig's actual third-person camera) can favor different designs. The
+## blade shader is unshaded (grass_blade.gdshader: ALBEDO = blade_color.rgb,
+## no lighting), so every grass pixel is a constant flat color -- "not
+## background" is an exact classification, not a fuzzy heuristic. Triangle
+## count is read from each mesh's own index array, not hardcoded, so this
+## stays correct if any asset's geometry changes later.
 ##
 ## Known limitation, not worth engineering around for an estimate tool: the
 ## wind shader reads the global TIME uniform, which keeps advancing between
@@ -36,9 +35,17 @@ extends SceneTree
 
 const GrassFieldScript = preload("res://scripts/world/grass_field.gd")
 
-const VARIANT_PATHS: Array[String] = [
-	"res://art/blender/grass/grass_blade_single.blend",
-	"res://art/blender/grass/grass_blade_tuft.blend",
+## Each entry's own blade_count -- NOT a shared constant. single is 4 tris/
+## instance, tuft is 8 -- tuft_1500 uses exactly half single_3000's instance
+## count so both submit the identical 12000 total triangles, to compare
+## coverage at equal triangle budget instead of equal instance count (a
+## static field of blades at a fixed count found tuft *less* efficient per
+## triangle; the open question is whether tuft needs fewer instances than
+## single for the same "full field" feeling, which would flip that result).
+const VARIANTS := [
+	{"name": "single_3000", "path": "res://art/blender/grass/grass_blade_single.blend", "blade_count": 3000},
+	{"name": "tuft_3000", "path": "res://art/blender/grass/grass_blade_tuft.blend", "blade_count": 3000},
+	{"name": "tuft_1500", "path": "res://art/blender/grass/grass_blade_tuft.blend", "blade_count": 1500},
 ]
 
 # angle_deg=0 look_at_from_position()'s "up" ambiguity isn't a concern here --
@@ -48,7 +55,6 @@ const CAMERA_VIEWS := [
 	{"name": "eyelevel", "position": Vector3(0.0, 1.6, 8.0), "target": Vector3(0.0, 0.3, 0.0)},
 ]
 
-const BLADE_COUNT := 3000
 const FIELD_RADIUS := 6.0
 const VIEWPORT_SIZE := Vector2i(480, 360)
 const OUTPUT_DIR := "/tmp/grass_density_probe"  # screenshots for a human to sanity-check
@@ -80,7 +86,6 @@ func _setup_scene() -> void:
 	_cam.current = true
 
 	_field = GrassFieldScript.new()
-	_field.blade_count = BLADE_COUNT
 	_field.field_radius = FIELD_RADIUS
 	root.add_child(_field)
 
@@ -88,7 +93,7 @@ func _run() -> void:
 	root.size = VIEWPORT_SIZE
 	await process_frame
 
-	# results[view_name][variant_name] = px_per_tri
+	# results[view_name][variant_name] = {"px_per_tri": float, "grass_pixels": int, "total_tris": int}
 	var results := {}
 	for view in CAMERA_VIEWS:
 		# look_at() requires the node to already be inside the tree and
@@ -101,41 +106,54 @@ func _run() -> void:
 		_cam.look_at_from_position(view["position"], view["target"], Vector3.UP)
 
 		var view_results := {}
-		for path in VARIANT_PATHS:
-			_field.blade_asset_path = path
-			# _queue_rebuild() defers; give it frames to land (same pattern
-			# as test_grass_field.gd's live-rebuild tests), plus one extra
-			# so the GPU has actually drawn a frame with the new mesh/camera
+		for variant in VARIANTS:
+			_field.blade_asset_path = variant["path"]
+			_field.blade_count = variant["blade_count"]
+			# _queue_rebuild() defers and debounces both assignments above
+			# into one rebuild; give it frames to land (same pattern as
+			# test_grass_field.gd's live-rebuild tests), plus one extra so
+			# the GPU has actually drawn a frame with the new mesh/camera
 			# before capture.
 			await process_frame
 			await process_frame
 			await process_frame
 
-			var variant_name := path.get_file().get_basename()
+			var variant_name: String = variant["name"]
 			var image := root.get_viewport().get_texture().get_image()
 			image.save_png("%s/%s_%s.png" % [OUTPUT_DIR, view["name"], variant_name])
 
 			var mesh: ArrayMesh = _field.get_node("Grass").multimesh.mesh
 			var tris_per_instance := _triangle_count(mesh)
-			var total_tris := tris_per_instance * BLADE_COUNT
+			var total_tris: int = tris_per_instance * variant["blade_count"]
 			var grass_pixels := _count_non_background_pixels(image)
 			var px_per_tri := float(grass_pixels) / float(total_tris)
 
-			view_results[variant_name] = px_per_tri
-			print("[%s] %s: %d tris/instance, %d total tris submitted, %d grass px, %.4f px/tri" % [
-				view["name"], variant_name, tris_per_instance, total_tris, grass_pixels, px_per_tri
+			view_results[variant_name] = {
+				"px_per_tri": px_per_tri,
+				"grass_pixels": grass_pixels,
+				"total_tris": total_tris,
+			}
+			print("[%s] %s: %d blades, %d tris/instance, %d total tris submitted, %d grass px, %.4f px/tri" % [
+				view["name"], variant_name, variant["blade_count"], tris_per_instance, total_tris, grass_pixels, px_per_tri
 			])
 		results[view["name"]] = view_results
 
 	print("")
 	for view_name in results:
-		var view_results: Dictionary = results[view_name]
-		var names := view_results.keys()
-		if names.size() == 2:
-			var a: String = names[0]
-			var b: String = names[1]
-			var ratio: float = view_results[b] / view_results[a] if view_results[a] > 0.0 else INF
-			print("[%s] %s covers %.2fx the pixels per triangle of %s" % [view_name, b, ratio, a])
+		var r: Dictionary = results[view_name]
+		if r.has("single_3000") and r.has("tuft_1500"):
+			var s: Dictionary = r["single_3000"]
+			var t: Dictionary = r["tuft_1500"]
+			print("[%s] equal triangle budget (%d tris each): single_3000 = %d px, tuft_1500 = %d px (%.2fx)" % [
+				view_name, s["total_tris"], s["grass_pixels"], t["grass_pixels"],
+				float(t["grass_pixels"]) / float(s["grass_pixels"]) if s["grass_pixels"] > 0 else INF
+			])
+		if r.has("single_3000") and r.has("tuft_3000"):
+			var s2: Dictionary = r["single_3000"]
+			var t2: Dictionary = r["tuft_3000"]
+			print("[%s] tuft_3000 covers %.2fx the pixels per triangle of single_3000 (same instance count, 2x tris)" % [
+				view_name, t2["px_per_tri"] / s2["px_per_tri"] if s2["px_per_tri"] > 0.0 else INF
+			])
 	print("Screenshots saved to ", OUTPUT_DIR, " -- look at them, these numbers alone aren't the answer.")
 	quit()
 

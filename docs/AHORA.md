@@ -58,58 +58,17 @@ la bitácora viva de acá en adelante.
 
 ## Pivote 2026-08-14 (ver `NORTE.md`) — ejecutado
 
-Se descartó el shapeshifting (Panther/Monkey/Avian) y la premisa de
-corrupción/rituales; el objetivo pasa a un solo personaje con moveset
-completo, más cerca de BOTW — mismo norte que `breath-of-freedom`. Ejecutado
-con `/iterate-safely` (plan → crítica de un subagente sin contexto → triage →
-ejecución), validado en cada tanda con `godot --headless` (GUT + carga de
-escena), nunca sólo "compila".
-
-**Sacado:** `scripts/player_action_stack/form/` entero (`FormBroker`/
-`FormComponent`/`FormReader`/`FormDebugReporter`), `Intents.wants_form_shift`,
-los 3 input actions `form_*` de `project.godot`, los nodos `Form*` de
-`player.tscn`. `CombatBroker` unifica las 4 acciones (antes una por forma)
-con prioridad explícita en vez de gate — ver §rationale de `ARCHITECTURE.md`.
-`PantherTakedownAction` → `TakedownAction`; los `damage_type` vestigiales
-(`avian_arrow`/`panther_takedown`/`monkey_counter`/`monkey_strike`) →
-genéricos.
-
-**Bug real encontrado por la crítica antes de escribir código, no después:**
-tickear las 4 acciones sin gate deja que liberar una flecha apuntando
-(`wants_archery_release`, derivado en parte de `wants_attack`) también
-dispare un golpe cuerpo a cuerpo el mismo frame. Arreglado con prioridad
-explícita en `CombatBroker.tick()` (bow-mientras-se-apunta > takedown >
-parry > strike, strike-en-curso siempre resuelve primero) y cubierto por
-`test_aiming_suppresses_strike_on_the_same_frame` — no es sólo lectura de
-código, el test lo ejercita.
-
-**De paso, aplicadas las leyes de `ARCHITECTURE.md` que todavía no se habían
-tocado en código:**
-- **§19** (NodePaths frágiles): `%NombreÚnico` donde el nodo destino
-  comparte owner (`Body`/`StaminaComponent`/`Services/*`/`MovementBroker`
-  dentro de `entity_base.tscn`; `CameraRig`/`Camera3D` dentro de
-  `player.tscn`), `@export NodePath` donde cruza instancia (`brain_path`,
-  sin cambios). La semántica exacta de qué cruza y qué no se verificó contra
-  la doc real de Godot (no de memoria) y con dos tests nuevos
-  (`test_player_scene.gd`, más assertions en `test_entity_base.gd`) — la
-  primera versión tenía `unique_name_in_owner=true` en el lugar equivocado
-  del `.tscn` (adentro del header `[node ...]` en vez de como property line)
-  y fallaba en silencio hasta correr el suite.
-- **§5** (mensajes): sólo 3 de los 8 `push_error`/`push_warning` existentes
-  violaban la ley de verdad (prefijo de clase redundante) —
-  `movement_broker.gd`, `ladder_service.gd`, `stairs_service.gd`. Los otros 5
-  interpolan el nombre de instancia del nodo, no un literal de clase; eso no
-  es lo que la ley prohíbe, se dejaron igual.
-- **§18** (tipado estático): auditado — `scripts/` ya cumplía. `test/` tiene
-  ~67 `var x = ...` sin tipar, exento por bajo valor real (ya escrito en
-  `ARCHITECTURE.md` §18, mismo criterio que `unwrap`/`expect` exento en
-  tests de `breath-of-freedom`).
-
-**Deuda anotada, no cerrada esta sesión:** `strike_action.gd` llama
-`MovementBroker.inject_forced_proposal()` directo, violando §14
-(preexistente, no introducido por este pivote — la crítica lo encontró
-mientras revisaba el patrón; ya está anotado en `ARCHITECTURE.md` §14 en vez
-de quedar como sorpresa la próxima vez que alguien lea esa ley).
+Se descartó el shapeshifting (Panther/Monkey/Avian) por un solo personaje
+con moveset completo, más cerca de BOTW — mismo norte que `breath-of-freedom`.
+Ejecutado con `/iterate-safely`; la crítica encontró un bug real antes de
+escribir código (tickear las 4 acciones de combate sin gate dejaba que
+apuntar el arco disparara un golpe cuerpo a cuerpo el mismo frame — resuelto
+con prioridad explícita en `CombatBroker.tick()`, cubierto por
+`test_aiming_suppresses_strike_on_the_same_frame`). De paso, §19 migrado
+(`%Único` vs `@export NodePath` según cruce o no de escena, verificado
+contra doc real de Godot) y §5/§18 auditados (ya cumplían casi del todo).
+Deuda anotada, no cerrada: §14 en `strike_action.gd` (ver `ARCHITECTURE.md`).
+Detalle completo en `git log` de los commits del pivote — no repetido acá.
 
 ## Terreno + auditoría de player_action_stack, 2026-08-14 (misma sesión)
 
@@ -143,19 +102,11 @@ contexto antes de escribir código, porque los primeros intentos (bug de
 causa de fondo.
 
 **Auditoría `/code-review` sobre `player_action_stack/` completo** (38
-archivos), pedida explícitamente para buscar más bugs del mismo tipo
-(asunciones de motor no verificadas). 9 hallazgos reales, los 9 arreglados
-(commit `3d0dff7`): path frágil sin guard en `CameraRig`; `StrikeMotor`
-perdía el arbitraje contra Stairs/Ladder por empate de prioridad (y casi
-introduzco un bug nuevo — la crítica encontró que si la propuesta pierde de
-plano en vez de empatar, `_active` quedaba trabado para siempre sin el
-watchdog que se agregó); arco/parry/takedown no gastaban stamina; input de
-ataque perdido en el frame exacto que expira el cooldown; tiro de arco
-descartado si había un golpe en cooldown; ints crudos en vez de
-`LocomotionState.ID`; overlay de debug de Movement y Combat pisándose;
-cámara de aterrizaje sin cubrir Stairs/Sneak/Ladder; casts de `LedgeService`
-sin gate de estado (arreglo acotado a `STRIKE` únicamente — extenderlo a
-stairs/ladder/sprint necesita jugarlo, no sólo tests en verde, §17).
+archivos, buscando más bugs del tipo "asunción de motor no verificada"): 9
+hallazgos reales, los 9 arreglados (commit `3d0dff7` — lista completa ahí,
+no repetida acá). Notable: `StrikeMotor` casi se llevaba un bug *nuevo* en
+el arreglo — la crítica encontró que si la propuesta perdía de plano el
+arbitraje (no empate) `_active` quedaba trabado sin el watchdog agregado.
 
 **Patrón repetido a tener en cuenta:** el editor de Godot cachea estado en
 memoria y no siempre recoge cambios externos al archivo — ya nos mordió con
@@ -388,6 +339,57 @@ control confirman que ninguna hoja quedó degenerada, pero **no reemplazan
 caminar por `grass_comparison.tscn` con viento real** — pendiente antes de
 elegir una variante (o de decidir seguir con ambas para probar LOD después).
 
+## Punta en V + variante plana + experimento de instancias, 2026-08-15 (misma sesión)
+
+Jugada la comparación de 3 (simple/plana/mata, coloreadas distinto para
+distinguirlas — ver arriba), la diferencia entre variantes "no se nota
+mucho" a ojo. Dos ideas del usuario, ejecutadas con `/iterate-safely`:
+
+**Punta en V en `single`:** `generate_grass_blade_single.py` ahora llama
+`place_leaf(..., tip_bend=0.05)` en los dos planos (antes convergían a un
+único punto en `(0,0,1.0)`). Como los dos planos son perpendiculares por
+construcción, las puntas dobladas quedan en direcciones distintas, no sobre
+la misma línea — no hay elección de signo que lo evite, es inherente a
+cruzar dos planos. Verificado con dos ángulos de render (no sólo el de
+siempre) antes de aceptarlo, y con las coordenadas de vértice reales en
+Godot. `HALF_WIDTH=0.08` confirmado en `grass_blade_common.py` antes de
+elegir `0.05` (mismo orden de magnitud que usa `tuft`). Cubierto por
+`test_single_blade_tip_is_bent_not_a_rigid_spike` (nuevo). Como
+`grass_blade_single.blend` es el default real de `blade_asset_path`, este
+cambio afecta a `scenes/grass_field.tscn` (el nivel principal) además de
+las escenas de comparación — se revisó que ningún test dependiera de la
+forma exacta anterior (sólo cantidades de vértices/superficies).
+
+**Experimento: ¿la mata necesita menos instancias para la misma sensación?**
+`tools/grass_density_probe.gd` medía a igual cantidad de instancias — no es
+la pregunta correcta, importa el presupuesto total de triángulos. Ahora
+`VARIANTS` es una lista de `{name, path, blade_count}` (antes sólo rutas)
+con 3 entradas: `single_3000`, `tuft_3000` (referencia) y `tuft_1500` (la
+mitad de instancias — `8 tris × 1500 = 4 tris × 3000 = 12.000`, mismo costo
+total exacto que `single_3000`). **Bug real que la crítica encontró antes
+de correrlo:** el cálculo de triángulos totales seguía usando una constante
+global fija en vez del `blade_count` de cada entrada — hubiera dado
+`tuft_1500` con el doble de triángulos de los que realmente se dibujaban,
+invalidando exactamente la comparación que el experimento buscaba hacer.
+
+**Resultado medido:** a presupuesto igual, `tuft_1500` cubre *menos*
+píxeles que `single_3000` (0,93× vista de pájaro, 0,97× altura de
+jugador) — la hipótesis de "menos instancias, misma sensación" no se
+sostiene, ni en el número ni mirando las capturas (a mitad de densidad la
+mata deja de cerrar huecos tan convincentemente). El `px/tri` de
+`tuft_1500` mejora respecto a `tuft_3000` (menos solapamiento entre
+instancias vecinas al haber menos de ellas — 3,72 vs. 2,63 vista de
+pájaro) pero sigue sin alcanzar el de `single_3000` (4,01): la eficiencia
+por triángulo más baja de la mata no es sólo un efecto de solapamiento
+entre instancias, es en parte propia de la forma — 4 hojas parcialmente
+tapándose entre sí dentro de una misma instancia rinden menos área única
+por triángulo que 2 planos cruzados bien separados, y reducir instancias
+no cambia eso.
+
+99/99 tests, 9 escenas cargan sin error. Sin decidir ganador todavía —
+falta jugar la punta en V (¿se nota caminando o sigue siendo sutil?) y
+mirar las capturas nuevas en `/tmp/grass_density_probe/`.
+
 ## Estado del código, al 2026-08-14
 
 Validado headless: 79/79 tests, 5 escenas cargan sin errores
@@ -423,20 +425,21 @@ separadas, no una migró a la otra todavía.
 Movement y Combat vía `BaseDebugContext`/`panel_key`, mismo panel, hacen
 merge (ver auditoría arriba — antes se pisaban).
 
-**Tests: 24 archivos, 95 tests, 95/95 en verde** (`godot --headless -s
+**Tests: 24 archivos, 99 tests, 99/99 en verde** (`godot --headless -s
 addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15).
-8 escenas cargan headless sin errores (`godot --headless --quit-after`).
+9 escenas cargan headless sin errores (`godot --headless --quit-after`).
 **Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
 particular, los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`,
-y las dos variantes de brizna modeladas en Blender, todos del 2026-08-15,
-todavía no se jugaron, sólo se verificaron headless.
+y las variantes de brizna modeladas en Blender, todos del 2026-08-15,
+todavía no se jugaron del todo, sólo se verificaron headless.
 
 **Git:** repo inicializado 2026-08-14; sesión del 14 (terreno + fix de
 `EntityController` + auditoría de `player_action_stack/`) quedó en 9 commits
 sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
-`scripts/world/`+`debug_overlay.gd`, la brizna modelada en Blender, y las
-dos variantes comparables (simple/mata) + la investigación de LOD que quedó
-pendiente. Sin pushear todavía — hace el push la persona, no el asistente.
+`scripts/world/`+`debug_overlay.gd`, las 3 variantes de brizna comparables
+(simple/plana/mata) con la investigación de LOD pendiente, y el experimento
+de punta-en-V + presupuesto de triángulos igual. Sin pushear todavía — hace
+el push la persona, no el asistente.
 
 **Medido con `tools/grass_density_probe.gd`** (2026-08-15, campo chico —
 3000 blades, radio 6m — para que quepa en cuadro): la mata es *menos*

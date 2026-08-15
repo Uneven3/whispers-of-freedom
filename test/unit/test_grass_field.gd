@@ -95,6 +95,19 @@ func test_blade_mesh_uses_the_blender_authored_asset():
 	var mesh: ArrayMesh = mmi.multimesh.mesh
 	assert_eq(mesh.get_surface_count(), 1, "Blender asset is a single crossed-leaf mesh, not the 2-surface fallback")
 
+func test_single_blade_tip_is_bent_not_a_rigid_spike():
+	var field := _build_field()
+	var verts: PackedVector3Array = field.get_node("Grass").multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	# Both tips sit at max height (y=1.0 unit height); neither should land
+	# exactly on the vertical axis (x=0 and z=0) like the old rigid-spike
+	# shape did -- tip_bend gives each plane's top a small kink.
+	var found_bent_tip := false
+	for v: Vector3 in verts:
+		if v.y > 0.99 and (absf(v.x) > 0.01 or absf(v.z) > 0.01):
+			found_bent_tip = true
+			break
+	assert_true(found_bent_tip, "at least one tip vertex should be offset from the vertical axis (tip_bend)")
+
 func test_blade_height_scales_with_max_blade_height():
 	var field := _build_field()
 	field.max_blade_height = 2.0
