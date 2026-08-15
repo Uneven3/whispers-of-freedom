@@ -5,28 +5,34 @@ Run headless from the repo root:
 
 Same leaf profile as generate_grass_blade_single.py (grass_blade_common.
 leaf_verts -- pointed tip, sunk base, waist row at 30% height), but 4 leaves
-arranged radially (0/90/180/270 degrees) instead of 2 crossed, each leaned
-outward from vertical plus a deterministic jitter (fixed seed, reproducible)
-in angle/height/width/root offset -- so it reads as an open little clump
-instead of a bunched-up column. 8 tris total (4 leaves x 2 tris), vs. 4 for
-the single variant: this is the "occupies more space" alternative asked for
-alongside the single blade, to compare both by eye in
-scenes/grass_comparison.tscn before picking one (or before this becomes
-relevant again for LOD tiers).
+in an X instead of 2 crossed: each rooted at its OWN ground position (not a
+shared origin), arranged so the four roots themselves form a small X, plus a
+slight static bend baked into each leaf's top triangle. 8 tris total (4
+leaves x 2 tris), vs. 4 for the single variant -- more silhouette per extra
+triangle than just widening one blade, and each MultiMesh instance covers
+more of the gaps a neighboring instance would otherwise leave (the
+"density/holes" goal), instead of 4 blades pivoting from one point.
 
-**First version of this file had a real bug, not just a style nit:**
-place_leaf()'s angle_deg is a rotation around Z, and leaf_verts()'s tip/base
-sit ON the Z axis (x=y=0) -- rotating a point that's already on the
-rotation axis doesn't move it. So 4 leaves at 0/90/180/270 all still grew
-from and to the *same* central point, just with their flat faces spun to
-face different directions -- from any one viewpoint they read as one thick
-column, not an open tuft (confirmed by looking at the imported mesh in
-Godot, not assumed). The fix is lean_deg: it tips each leaf away from
-vertical *before* the Z rotation, so angle_deg then spreads genuinely
-separated leaves into different compass directions instead of just
-different facings. The small root offset from before is kept as secondary
-variation, not the primary separator -- it was never going to be big enough
-to fix this on its own.
+**Went through two wrong designs before this one, both caught by looking at
+the result, not assumed correct on paper:**
+1. First version relied on angle_deg (a Z rotation) alone to spread 4 leaves.
+   leaf_verts() puts the tip and base ON the Z axis, so rotating a leaf
+   still centered at the origin never moves them -- all 4 leaves grew from
+   and to the same point, just facing different directions. Read as one
+   thick column, not a tuft.
+2. Second version added lean_deg (tip the whole leaf away from vertical
+   before the Z rotation). That did separate the leaves, but it's not what
+   was actually asked for: the leaves still pivoted from one shared root,
+   just leaning outward from it -- not "4 or 5 blades that don't share an
+   origin, like an X, covering the holes other blades leave." It also had no
+   answer for "the top triangle should bend a little" -- lean tips the
+   *whole* rigid leaf, not just the part above the waist.
+3. This version: leaf_verts() gained tip_bend (a small sideways offset of
+   just the tip, so only the top triangle kinks relative to the bottom one
+   -- a static resting curve, distinct from the wind shader's dynamic arch).
+   place_leaf()'s offset is now the real separator: each leaf's root sits at
+   its own point, arranged in an X (see ROOT_ANGLES_DEG below), not
+   pivoting from a shared center.
 """
 
 import math
@@ -49,36 +55,41 @@ from grass_blade_common import (
 
 NAME = "grass_blade_tuft"
 
-BASE_ANGLES_DEG = (0.0, 90.0, 180.0, 270.0)
-ANGLE_JITTER_DEG = 10.0
-LEAN_DEG_RANGE = (15.0, 25.0)  # the actual separator -- see module docstring
-HEIGHT_SCALE_RANGE = (0.82, 1.05)
+# Each leaf's root sits out along one arm of an X (not at a shared center),
+# facing roughly the same direction its root is offset toward -- four
+# separate little blades planted around a small clump, not one blade
+# pivoting on four spokes.
+ROOT_ANGLES_DEG = (45.0, 135.0, 225.0, 315.0)
+ANGLE_JITTER_DEG = 12.0
+ROOT_RADIUS = 0.09  # the real separator -- comparable to half_width, not a few mm
+ROOT_RADIUS_JITTER = 0.02
+TIP_BEND_RANGE = (0.04, 0.09)  # small kink in the top triangle only -- "no mucho"
+HEIGHT_SCALE_RANGE = (0.85, 1.05)
 HALF_WIDTH_RANGE = (0.06, 0.09)
-BASE_OFFSET_RADIUS = 0.03  # secondary variation only, not what spreads the leaves apart
 RANDOM_SEED = 7  # fixed so the asset is reproducible across regenerations
 
 
 def build_mesh() -> bpy.types.Object:
     rng = random.Random(RANDOM_SEED)
     bm = bmesh.new()
-    for base_angle in BASE_ANGLES_DEG:
-        angle = base_angle + rng.uniform(-ANGLE_JITTER_DEG, ANGLE_JITTER_DEG)
-        lean = rng.uniform(*LEAN_DEG_RANGE)
-        height_scale = rng.uniform(*HEIGHT_SCALE_RANGE)
-        half_width = rng.uniform(*HALF_WIDTH_RANGE)
-        offset_angle = rng.uniform(0.0, math.tau)
-        offset_radius = rng.uniform(0.0, BASE_OFFSET_RADIUS)
+    for root_angle_deg in ROOT_ANGLES_DEG:
+        jittered_angle_deg = root_angle_deg + rng.uniform(-ANGLE_JITTER_DEG, ANGLE_JITTER_DEG)
+        jittered_angle = math.radians(jittered_angle_deg)
+        radius = ROOT_RADIUS + rng.uniform(-ROOT_RADIUS_JITTER, ROOT_RADIUS_JITTER)
         offset = mathutils.Vector((
-            math.cos(offset_angle) * offset_radius,
-            math.sin(offset_angle) * offset_radius,
+            math.cos(jittered_angle) * radius,
+            math.sin(jittered_angle) * radius,
             0.0,
         ))
+        height_scale = rng.uniform(*HEIGHT_SCALE_RANGE)
+        half_width = rng.uniform(*HALF_WIDTH_RANGE)
+        tip_bend = rng.uniform(*TIP_BEND_RANGE) * rng.choice((-1.0, 1.0))
         place_leaf(
             bm,
-            angle_deg=angle,
+            angle_deg=jittered_angle_deg,
             height_scale=height_scale,
             half_width=half_width,
-            lean_deg=lean,
+            tip_bend=tip_bend,
             offset=offset,
         )
 

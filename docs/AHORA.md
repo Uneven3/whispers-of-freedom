@@ -336,27 +336,33 @@ cargan. Ejecutado con `/iterate-safely`.
   de integrar — el lateral solo no mostraba el arreglo radial (las hojas
   quedan casi de canto desde ese ángulo), hizo falta el oblicuo para
   confirmarlo.
-- **Bug real de verdad, encontrado por el usuario mirando el resultado, no
-  por la crítica ni por los renders de control iniciales:** el diseño de
-  arriba tenía un error de geometría más profundo que el del "punto base"
-  — `angle_deg` es una rotación alrededor de Z, y `leaf_verts()` pone la
-  punta y la base de cada hoja **sobre** ese mismo eje (x=y=0). Rotar un
-  punto que ya está en el eje de rotación no lo mueve: las 4 hojas seguían
-  naciendo y terminando en el mismo punto central, sólo la "cintura" se
-  abría un poco — de cualquier ángulo se veía como una columna apelotonada,
-  no una mata abierta. El offset de raíz (2,5cm) era demasiado chico para
-  compensarlo. **Por qué los renders de control no lo agarraron:** el
-  lateral y el oblicuo (ambos casi de canto) no muestran bien un
-  apelotonamiento en el eje vertical — hizo falta mirar desde arriba
-  (agregado recién ahora como chequeo) para verlo clarísimo: un molinete de
-  4 puntas antes del fix, todo junto en el centro con el bug. **Arreglo:**
-  `place_leaf()` suma `lean_deg`, una inclinación real alrededor del eje X
-  local de la hoja *antes* de la rotación en Z — así la punta se aleja de
-  verdad del centro, y `angle_deg` reparte las 4 hojas ya inclinadas en
-  direcciones distintas en vez de sólo girar hacia dónde mira cada cara.
-  Rango `15°–25°` con jitter, offset de raíz subido a ≤3cm como variación
-  secundaria. Confirmado con vista superior antes y después del fix — antes:
-  centro apelotonado; después: abanico de 4 puntas separadas.
+- **Dos vueltas de corrección real, ninguna encontrada por la crítica ni por
+  los renders de control iniciales — sólo mirando el resultado (el usuario
+  la primera vez, un chequeo nuevo desde arriba la segunda):**
+  1. El diseño original tenía un error más profundo que el del "punto base":
+     `angle_deg` es una rotación alrededor de Z, y `leaf_verts()` pone la
+     punta y la base de cada hoja **sobre** ese mismo eje (x=y=0) — rotar un
+     punto que ya está en su eje de rotación no lo mueve. Las 4 hojas seguían
+     naciendo y terminando en el mismo punto central, sólo la "cintura" se
+     abría un poco: de cualquier ángulo se veía como una columna apelotonada.
+  2. Primer arreglo (`lean_deg`, inclinar la hoja entera alrededor de su eje
+     X local antes de rotar en Z) sí separaba las puntas — pero el usuario
+     aclaró que no era lo pedido: quería 4-5 briznas que **no nazcan del
+     mismo origen** ("como una X" de raíces separadas, para tapar huecos
+     entre briznas vecinas), y que sea la hoja misma la que se doble un poco
+     — sólo el triángulo de arriba, "no mucho" — no toda la hoja inclinada
+     rígida desde la base.
+  - **Arreglo final:** `leaf_verts()` suma `tip_bend` — desplaza sólo la
+    punta en X local, así el triángulo de arriba (punta/cintura) queda en un
+    ángulo leve respecto al de abajo (base/cintura), un quiebre estático de
+    reposo (distinto del arco dinámico del shader de viento). `place_leaf()`
+    ya no inclina la hoja entera — `offset` pasa a ser el separador real: en
+    `generate_grass_blade_tuft.py`, las 4 raíces se plantan en un patrón X de
+    verdad (ángulos 45°/135°/225°/315° + jitter, radio ~9cm — comparable al
+    medio-ancho de la hoja, no unos milímetros) en vez de pivotear desde un
+    centro compartido. Verificado con coordenadas de vértice reales (no sólo
+    con un render): las 4 raíces quedan en los 4 cuadrantes, separadas entre
+    sí, cada punta claramente desplazada de su propia raíz.
 - **`scenes/grass_field_single.tscn`** y **`scenes/grass_field_tuft.tscn`**
   (nuevas, directo en `scenes/` — sin subcarpeta `components/`, `scenes/`
   hoy es plana y no valía la pena una convención nueva a mitad de sesión):

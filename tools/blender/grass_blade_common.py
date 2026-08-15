@@ -30,16 +30,22 @@ TIP_HEIGHT = 1.0
 BLADE_COLOR = (0.22, 0.42, 0.18, 1.0)  # matches grass_blade.gdshader's default uniform
 
 
-def leaf_verts(half_width: float = HALF_WIDTH) -> tuple:
+def leaf_verts(half_width: float = HALF_WIDTH, tip_bend: float = 0.0) -> tuple:
     """The four corners of one leaf profile, local to a leaf standing at the
     origin facing +X, before any per-leaf rotation/translation: pointed tip,
     pointed sunk base, and a waist row at 30% height (see
     docs/AHORA.md's "Brizna modelada en Blender" entry for why the waist row
     exists — it's what lets the blade arch under the wind shader instead of
     hinging rigidly at two endpoints).
+
+    tip_bend offsets the tip sideways (local X) from directly-above-the-waist,
+    giving the *top* triangle (tip/waist_l/waist_r) a small static kink
+    relative to the bottom one (base/waist_l/waist_r) -- a resting curve
+    baked into the mesh, not the dynamic wind arch. Default 0.0 keeps the
+    tip centered (the single blade's straight shape).
     """
     return (
-        mathutils.Vector((0.0, 0.0, TIP_HEIGHT)),
+        mathutils.Vector((tip_bend, 0.0, TIP_HEIGHT)),
         mathutils.Vector((-half_width, 0.0, WAIST_HEIGHT)),
         mathutils.Vector((half_width, 0.0, WAIST_HEIGHT)),
         mathutils.Vector((0.0, 0.0, BASE_SINK)),
@@ -51,35 +57,34 @@ def place_leaf(
     angle_deg: float,
     height_scale: float = 1.0,
     half_width: float = HALF_WIDTH,
-    lean_deg: float = 0.0,
+    tip_bend: float = 0.0,
     offset: mathutils.Vector = None,
 ) -> None:
-    """Builds one leaf (leaf_verts, height-scaled) into bm.
+    """Builds one leaf (leaf_verts, height-scaled and tip-bent) into bm,
+    facing angle_deg (rotated around Z) and rooted at offset.
 
-    leaf_verts() puts the tip and base ON the Z axis (x=y=0) -- only the
-    waist corners are off-axis. Rotating a point that already sits on the
-    rotation axis does nothing, so angle_deg alone (a Z rotation) never
-    separates several leaves' tips/bases: it only spins which way each
-    leaf's flat face points, while every leaf keeps growing from and to the
-    same central point. That's fine for a single crossed blade (2 planes
-    sharing one growth axis reads fine from any angle) but produces a
-    bunched-up column instead of an open clump for a multi-leaf tuft.
+    For a multi-leaf tuft, offset is what has to do the real work of
+    separating leaves: leaf_verts() puts the tip and base ON the Z axis
+    (x=y=0), so rotating a leaf that's still centered at the origin only
+    spins which way its flat face points -- it never moves the tip or base
+    away from a shared center (confirmed by looking at the imported mesh,
+    not assumed: an earlier version relied on angle_deg alone and every leaf
+    still grew from and to the same point). offset must be different per
+    leaf, and large enough to matter relative to half_width, or several
+    leaves will still read as one bunched-up column instead of an open tuft
+    with visibly separate roots.
 
-    lean_deg tips the leaf away from vertical around its own local X axis
-    (its width axis) *before* the Z rotation, so its tip genuinely moves
-    away from the shared center -- angle_deg then spreads several leaned
-    leaves out into different compass directions. offset adds a further,
-    smaller shift of the whole leaf (still applied to all 4 vertices as one
-    rigid shape, not just one corner).
+    angle_deg still matters for which way each already-separated leaf's flat
+    card faces -- keeps the "readable from any angle" property the original
+    2-leaf cross has, now across N leaves rooted at different points.
     """
     if offset is None:
         offset = mathutils.Vector((0.0, 0.0, 0.0))
-    lean = mathutils.Matrix.Rotation(math.radians(lean_deg), 4, "X")
     rotation = mathutils.Matrix.Rotation(math.radians(angle_deg), 4, "Z")
     verts = []
-    for v in leaf_verts(half_width):
+    for v in leaf_verts(half_width, tip_bend):
         scaled = mathutils.Vector((v.x, v.y, v.z * height_scale))
-        verts.append(rotation @ (lean @ scaled) + offset)
+        verts.append(rotation @ scaled + offset)
     v_tip, v_waist_l, v_waist_r, v_base = (bm.verts.new(v) for v in verts)
     bm.faces.new((v_tip, v_waist_l, v_waist_r))
     bm.faces.new((v_base, v_waist_r, v_waist_l))
