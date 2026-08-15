@@ -51,20 +51,35 @@ def place_leaf(
     angle_deg: float,
     height_scale: float = 1.0,
     half_width: float = HALF_WIDTH,
+    lean_deg: float = 0.0,
     offset: mathutils.Vector = None,
 ) -> None:
-    """Builds one leaf (leaf_verts, height-scaled) into bm, rotated angle_deg
-    around Z and translated by offset. The whole leaf moves together as one
-    rigid shape -- offsetting only its base vertex would leave a dangling
-    corner instead of actually shifting where the leaf roots from.
+    """Builds one leaf (leaf_verts, height-scaled) into bm.
+
+    leaf_verts() puts the tip and base ON the Z axis (x=y=0) -- only the
+    waist corners are off-axis. Rotating a point that already sits on the
+    rotation axis does nothing, so angle_deg alone (a Z rotation) never
+    separates several leaves' tips/bases: it only spins which way each
+    leaf's flat face points, while every leaf keeps growing from and to the
+    same central point. That's fine for a single crossed blade (2 planes
+    sharing one growth axis reads fine from any angle) but produces a
+    bunched-up column instead of an open clump for a multi-leaf tuft.
+
+    lean_deg tips the leaf away from vertical around its own local X axis
+    (its width axis) *before* the Z rotation, so its tip genuinely moves
+    away from the shared center -- angle_deg then spreads several leaned
+    leaves out into different compass directions. offset adds a further,
+    smaller shift of the whole leaf (still applied to all 4 vertices as one
+    rigid shape, not just one corner).
     """
     if offset is None:
         offset = mathutils.Vector((0.0, 0.0, 0.0))
+    lean = mathutils.Matrix.Rotation(math.radians(lean_deg), 4, "X")
     rotation = mathutils.Matrix.Rotation(math.radians(angle_deg), 4, "Z")
     verts = []
     for v in leaf_verts(half_width):
         scaled = mathutils.Vector((v.x, v.y, v.z * height_scale))
-        verts.append(rotation @ scaled + offset)
+        verts.append(rotation @ (lean @ scaled) + offset)
     v_tip, v_waist_l, v_waist_r, v_base = (bm.verts.new(v) for v in verts)
     bm.faces.new((v_tip, v_waist_l, v_waist_r))
     bm.faces.new((v_base, v_waist_r, v_waist_l))
