@@ -1,8 +1,19 @@
 class_name EntityController
-extends Node
+extends Node3D
 
 ## Motor mask applied at _ready() for this entity — e.g. a mount only allows
 ## ground motors. Empty means "all allowed" (the default for a full player).
+##
+## Node3D, not Node: Godot's Node3D only inherits transform from its
+## IMMEDIATE parent cast to Node3D — it does not walk up through a plain
+## Node to find a farther Node3D ancestor. As a plain Node, EntityController
+## silently broke that chain between Player (the entity's spatial root,
+## moved by scenes/SpawnSnap) and Body/VisualsPivot underneath it: moving
+## Player never moved the actual capsule, in the editor or in a real Play
+## session — confirmed empirically against the engine, not assumed. This
+## node still owns no transform of its own (identity, a transparent
+## pass-through) — it's spatial now only so the chain isn't broken, not to
+## carry meaning itself (§3/§13 of ARCHITECTURE.md, unchanged).
 @export var default_motor_mask: Array[StringName] = []
 
 @onready var _movement_broker: Node = get_node_or_null("MovementBroker")

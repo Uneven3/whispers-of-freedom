@@ -27,7 +27,7 @@
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_vmesh"]
 
-[node name="EntityController" type="Node" unique_id=1919641928]
+[node name="EntityController" type="Node3D" unique_id=1919641928]
 script = ExtResource("1_iitmg")
 
 [node name="Body" type="CharacterBody3D" parent="." unique_id=1733088829]
