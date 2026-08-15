@@ -15,7 +15,6 @@
 [ext_resource type="Script" path="res://scripts/player_action_stack/spawn_snap.gd" id="40_spawn_snap"]
 
 [node name="Player" type="Node3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
 [node name="SpawnSnap" type="Node" parent="."]
 script = ExtResource("40_spawn_snap")
