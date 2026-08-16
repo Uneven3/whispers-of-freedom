@@ -126,4 +126,10 @@ func _process(delta: float) -> void:
 	global_position.x = _body.global_position.x
 	global_position.z = _body.global_position.z
 	global_position.y = lerpf(global_position.y, _body.global_position.y + _target_y_offset, interpolation_speed * delta)
-	basis = basis.slerp(_body.basis, interpolation_speed * delta)
+	# orthonormalized() on both sides: Basis.slerp() requires pure rotations
+	# (no scale/skew) and calls get_rotation_quaternion() internally, which
+	# throws if either basis has drifted even slightly. Reassigning `basis`
+	# to its own slerp result every frame accumulates float error over time
+	# until the strict is_rotation() check trips (~80s in on one playtest) —
+	# re-orthonormalizing each frame keeps that drift from ever building up.
+	basis = basis.orthonormalized().slerp(_body.basis.orthonormalized(), interpolation_speed * delta).orthonormalized()
