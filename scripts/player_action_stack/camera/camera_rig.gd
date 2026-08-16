@@ -10,13 +10,19 @@ extends Node3D
 @export var follow_fov_degrees: float = 75.0
 @export var aim_fov_degrees: float = 56.0
 @export var aim_blend_speed: float = 12.0
+## NodePath to the EntityController relative to this rig. Defaults to the
+## player convention (sibling), same pattern as MovementBroker.brain_path —
+## other entities that want a camera can override this instead of CameraRig
+## silently failing to resolve a sibling that doesn't exist under them.
+@export var entity_controller_path: NodePath = NodePath("../EntityController")
 
 var _current_dip: float = 0.0
 var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _is_aiming: bool = false
 
-@onready var _body: CharacterBody3D = get_node_or_null("../EntityController/Body") as CharacterBody3D
+@onready var _entity_controller: Node = get_node_or_null(entity_controller_path)
+@onready var _body: CharacterBody3D = (_entity_controller.get_node_or_null("Body") if _entity_controller else null) as CharacterBody3D
 @onready var _lens: SpringArm3D = $Lens
 @onready var _camera: Camera3D = $Lens/Camera3D
 var _reticle_canvas: CanvasLayer
@@ -26,16 +32,16 @@ func _ready() -> void:
 	# Registered visual-update loop owner — _process intentionally always-on (smooth camera interpolation).
 	set_as_top_level(true)
 	if _body == null:
-		push_warning("CameraRig could not resolve ../EntityController/Body — camera will not follow")
-	var broker = get_node_or_null("../EntityController/MovementBroker")
+		push_warning("CameraRig could not resolve %s/Body — camera will not follow" % entity_controller_path)
+	var broker = _entity_controller.get_node_or_null("MovementBroker") if _entity_controller else null
 	if broker and broker.has_method("get_state_reader"):
 		var state_reader = broker.get_state_reader()
 		if state_reader:
 			state_reader.state_changed.connect(_on_locomotion_state_changed)
-	
-	if has_node("../EntityController/PlayerBrain"):
-		get_node("../EntityController/PlayerBrain").mouse_motion_received.connect(_on_mouse_motion)
-	var combat_broker = get_node_or_null("../EntityController/CombatBroker")
+
+	if _entity_controller and _entity_controller.has_node("PlayerBrain"):
+		_entity_controller.get_node("PlayerBrain").mouse_motion_received.connect(_on_mouse_motion)
+	var combat_broker = _entity_controller.get_node_or_null("CombatBroker") if _entity_controller else null
 	if combat_broker and combat_broker.has_signal("aiming_changed"):
 		combat_broker.connect("aiming_changed", _on_aiming_changed)
 	

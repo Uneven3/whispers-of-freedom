@@ -40,16 +40,8 @@ func on_deactivate(body: CharacterBody3D) -> void:
 func tick(delta: float, intents: Intents, body: CharacterBody3D, stamina: StaminaComponent, _services: Array[BaseService]) -> void:
 	apply_locomotion_rotation(body, intents, delta)
 	var move_dir: Vector3 = Vector3(intents.move_dir.x, 0, intents.move_dir.y).normalized()
-	
-	if move_dir != Vector3.ZERO:
-		body.velocity.x = move_toward(body.velocity.x, move_dir.x * max_speed, acceleration * delta)
-		body.velocity.z = move_toward(body.velocity.z, move_dir.z * max_speed, acceleration * delta)
-	else:
-		body.velocity.x = move_toward(body.velocity.x, 0, friction * delta)
-		body.velocity.z = move_toward(body.velocity.z, 0, friction * delta)
-		
-	body.velocity.y = 0.0 # Stay grounded
-	
+	apply_ground_velocity(body, move_dir, max_speed, acceleration, friction, delta)
+
 	# Rotate body to face movement (duplicated from broker but sneak might want custom rotation speed)
 	if move_dir.length_squared() > MOVE_DIR_THRESHOLD_SQ:
 		var target_basis: Basis = Basis.looking_at(move_dir, Vector3.UP)

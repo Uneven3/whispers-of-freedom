@@ -15,17 +15,9 @@ func gather_proposals(_current_mode: int, _intents: Intents, services: Array[Bas
 func tick(_delta: float, intents: Intents, body: CharacterBody3D, stamina: StaminaComponent, _services: Array[BaseService]) -> void:
 	apply_locomotion_rotation(body, intents, _delta)
 	var move_dir: Vector3 = Vector3(intents.move_dir.x, 0, intents.move_dir.y).normalized()
-	if move_dir != Vector3.ZERO:
-		body.velocity.x = move_toward(body.velocity.x, move_dir.x * max_speed, acceleration * _delta)
-		body.velocity.z = move_toward(body.velocity.z, move_dir.z * max_speed, acceleration * _delta)
-	else:
-		body.velocity.x = move_toward(body.velocity.x, 0, friction * _delta)
-		body.velocity.z = move_toward(body.velocity.z, 0, friction * _delta)
-
-	# Vertical handling — WalkMotor owns velocity.y in walk mode. Stair traversal is
-	# delegated to StairsMotor; small obstacles to AutoVaultMotor. WalkMotor itself is
-	# strictly flat-floor.
-	body.velocity.y = 0.0
+	# Stair traversal is delegated to StairsMotor; small obstacles to
+	# AutoVaultMotor. WalkMotor itself is strictly flat-floor.
+	apply_ground_velocity(body, move_dir, max_speed, acceleration, friction, _delta)
 
 	if stamina:
 		stamina.recover(stamina_recover_per_sec * _delta)

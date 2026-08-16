@@ -44,3 +44,18 @@ func apply_locomotion_rotation(body: CharacterBody3D, intents: Intents, delta: f
 		var target_dir: Vector3 = Vector3(intended_dir.x, 0, intended_dir.y).normalized()
 		var target_basis: Basis = Basis.looking_at(target_dir, Vector3.UP)
 		body.basis = body.basis.slerp(target_basis, speed * delta)
+
+## Shared flat-floor horizontal-velocity handling — WalkMotor, SprintMotor,
+## and SneakMotor all accelerate toward move_dir * speed when moving and
+## decelerate to zero otherwise, then zero velocity.y (stairs/obstacles are
+## delegated to StairsMotor/AutoVaultMotor, never handled here). Kept as a
+## shared helper instead of each motor's own copy after the same pattern
+## showed up duplicated three times.
+func apply_ground_velocity(body: CharacterBody3D, move_dir: Vector3, speed: float, accel: float, decel: float, delta: float) -> void:
+	if move_dir != Vector3.ZERO:
+		body.velocity.x = move_toward(body.velocity.x, move_dir.x * speed, accel * delta)
+		body.velocity.z = move_toward(body.velocity.z, move_dir.z * speed, accel * delta)
+	else:
+		body.velocity.x = move_toward(body.velocity.x, 0, decel * delta)
+		body.velocity.z = move_toward(body.velocity.z, 0, decel * delta)
+	body.velocity.y = 0.0
