@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://dg3upyr3mv2pg"]
 
+[ext_resource type="Script" uid="uid://djl4pjc3xqbff" path="res://scripts/world/grass_terrain_instancer.gd" id="grass_terrain_instancer"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="player_scene"]
 [ext_resource type="Terrain3DAssets" uid="uid://dghomehnyosl6" path="res://world_data/terrain/terrain_assets.tres" id="terrain_assets"]
 
@@ -63,9 +64,14 @@ material = SubResource("Terrain3DMaterial_ekjg4")
 assets = ExtResource("terrain_assets")
 show_checkered = true
 top_level = true
+metadata/_edit_lock_ = true
 
 [node name="Player" parent="." unique_id=406302133 instance=ExtResource("player_scene")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62150633, 2.1789868, -1.0169065)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62150633, 1.516521, -1.0169065)
+
+[node name="GrassInstancer" type="Node3D" parent="." unique_id=1426261369]
+script = ExtResource("grass_terrain_instancer")
+terrain_path = NodePath("../Terrain3D")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2094110343]
 transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0, 10, 0)

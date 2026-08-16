@@ -1,5 +1,8 @@
 [gd_resource type="Terrain3DAssets" format=3 uid="uid://dghomehnyosl6"]
 
+[ext_resource type="Shader" uid="uid://cfbwuf7ts7161" path="res://scripts/world/grass_blade.gdshader" id="1_ktcpb"]
+[ext_resource type="PackedScene" uid="uid://drjg4oyvdh8jv" path="res://art/blender/grass/grass_blade_single.blend" id="2_ha0lj"]
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_n761j"]
 transparency = 4
 cull_mode = 2
@@ -18,5 +21,25 @@ last_lod = 0
 last_shadow_lod = 0
 lod0_range = 128.0
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_uueac"]
+render_priority = 0
+shader = ExtResource("1_ktcpb")
+shader_parameter/blade_color = Color(0.22, 0.42, 0.18, 1)
+shader_parameter/tip_color = Color(0.55, 0.68, 0.3, 1)
+shader_parameter/blade_height = 1.0
+shader_parameter/wind_speed = 1.6
+shader_parameter/wind_strength = 0.35
+shader_parameter/sway_frequency = 2.2
+shader_parameter/sway_amplitude = 0.06
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_abblt"]
+name = "TerrainGrassInstancer_GrassInstancer"
+id = 1
+scene_file = ExtResource("2_ha0lj")
+material_override = SubResource("ShaderMaterial_uueac")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 128.0
+
 [resource]
-mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_0p7y4")])
+mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_0p7y4"), SubResource("Terrain3DMeshAsset_abblt")])

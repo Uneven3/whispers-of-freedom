@@ -6,7 +6,8 @@ extends Node
 ## Terrain3D node registered in the "terrain" group — not a NodePath/sibling
 ## reach, since Player's composition root (this scene) can't know what scene
 ## it'll be dropped into (§3 of ARCHITECTURE.md). No "terrain" group member
-## (eg grass_field.tscn's flat Ground) is a normal case, not a failure: no-op.
+## (a scene with a flat, non-Terrain3D ground) is a normal case, not a
+## failure: no-op.
 ##
 ## Untyped/dynamic calls into Terrain3D on purpose: addons/terrain_3d/ isn't
 ## committed to this repo (see AHORA.md), so a static Terrain3D type here
@@ -56,8 +57,7 @@ func _ready() -> void:
 	_snap_to_terrain()
 
 ## Debounces Inspector edits (Godot sets every exported var once while
-## deserializing the scene, before _ready runs) into a single snap —
-## same pattern as GrassField._queue_rebuild().
+## deserializing the scene, before _ready runs) into a single snap.
 func _queue_snap() -> void:
 	if not _ready_done or _snap_queued:
 		return
