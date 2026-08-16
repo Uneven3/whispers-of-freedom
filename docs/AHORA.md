@@ -176,82 +176,33 @@ una escalera y una escalera de mano reales, y pegarle a un `CombatDummy` con
 las 4 acciones, para confirmar que el arreglo del guard no cambió el feel de
 nada que ya andaba.
 
-## Pasto: de graybox a brizna modelada, exploración de variantes, y decisión final (2026-08-14/15)
+## Pasto: historia resumida (2026-08-14/15) — el sistema descripto acá ya no existe, ver sección siguiente
 
-Reemplazado el quad rectangular a mano por una brizna modelada en
-Blender+Python (`tools/blender/generate_grass_blade_single.py`, perfil de
-"hoja" investigado en `breath-of-freedom` — punta y base en punta, cintura a
-0,30 de la altura para que arquee con el viento), importada nativa en Godot
-(`blade_asset_path`, nuevo `@export_file("*.blend")` en `GrassField`, con
-caché por-path — sin exportar a `.glb`, pedido explícito del usuario: "pensá
-un pipeline que se adapte a Godot", no el de Bevy del proyecto hermano). Si
-el `.blend` no importa (máquina sin `Blender Path` configurado) cae a
-`_build_fallback_blade_mesh()`, no crashea — verificado de verdad simulando
-el clon fresco.
+`GrassField` (un `Node3D`/`@tool` que armaba su propio `MultiMeshInstance3D`)
+fue el primer sistema de pasto — brizna modelada en Blender+Python (perfil de
+"hoja" con cintura a 0,30 de la altura, punta en V, `tip_bend`), 3 variantes
+comparadas objetivamente (simple cruzada/plana/mata — ganó la simple
+cruzada), un bug real de distribución (`rng.randf()*field_radius` es
+uniforme en *radio* no en *área* — fix: `sqrt(rng.randf())*field_radius`),
+extraído a su propia escena instanciable (`grass_patch.tscn`) con
+`Editable Children` para poder tunearlo viendo el resto del nivel, un
+gradiente base-punta en el shader, y varios uniforms de viento expuestos
+como `@export`. **Detalle completo de cada paso en `git log`, no repetido
+acá** — el 2026-08-15 se decidió migrar todo esto al instancer nativo de
+Terrain3D (ver abajo) y `GrassField`/`grass_field.gd`/`grass_field.tscn`/
+`grass_patch.tscn`/`tools/grass_density_probe.gd` se borraron una vez
+verificada la migración. Lecciones que sí siguen aplicando: un screenshot
+estático puede mentir sobre geometría real (varios diseños de la mata solo
+se vieron mal desde ángulos adicionales), y una escena de medición aislada
+exagera huecos que la densidad real del juego disimula.
 
-Se probaron 3 variantes intercambiables: simple cruzada (2 planos, 4 tris),
-plana sin cruzar (2 tris, riesgo conocido de desaparecer de canto al orbitar
-la cámara), y mata (4 hojas con raíces separadas en X, 8 tris). Medidas con
-`tools/grass_density_probe.gd` (herramienta propia de píxeles-por-triángulo
-— no hay nada nativo en Godot para esto) y jugadas en una escena de
-comparación con colores distintos por variante.
+## Estado del código, al 2026-08-15
 
-**Decisión final: la simple cruzada gana, con una punta en V** (`tip_bend`,
-dobla sólo el triángulo de arriba, no la hoja entera). Ni la plana ni la
-mata mostraron ventaja clara — la mata con la mitad de instancias (mismo
-presupuesto de triángulos que la simple) seguía cubriendo *menos* píxeles
-(0,93–0,97×), en parte porque su eficiencia por triángulo más baja es
-propia de la forma (hojas tapándose entre sí), no sólo del solapamiento
-entre instancias. Assets de `tuft`/`flat` **conservados en disco** (`.blend`
-+ generadores Python + `grass_blade_common.py` compartido) por si sirven
-para LOD más adelante, pero sacados de toda escena
-(`grass_field_tuft.tscn`/`grass_field_flat.tscn`/`grass_comparison.tscn`
-borrados el 2026-08-15).
-
-**Lecciones que quedaron (detalle completo en `git log` de los commits del
-14/15, no repetido acá):**
-- Un screenshot estático puede mentir sobre geometría real — 3 diseños
-  sucesivos de la mata (raíces compartidas por rotar un punto sobre su
-  propio eje, inclinación rígida en vez de quiebre en la punta, offset
-  insuficiente) sólo se vieron mal con renders desde ángulos adicionales o
-  coordenadas de vértice reales, nunca con el primer render "que se veía
-  bien".
-- Una escena de medición aislada (fondo negro, campo chico y cerca) exagera
-  huecos que la densidad real del juego disimula — jugar la comparación
-  real contradijo lo que decían las capturas más de una vez.
-- **LOD, próximo tema, todavía no implementado:** la hipótesis de que
-  "briznas individuales sin medir bien" causaba pop de LOD no se sostiene
-  del todo — el mecanismo real es casi siempre el *corte* (transición dura
-  entre niveles) más que la brizna de origen, y Godot trae nativo lo que
-  `breath-of-freedom` tuvo que reinventar a mano en WGSL:
-  `GeometryInstance3D.visibility_range_begin/end` +
-  `visibility_range_fade_mode = FADE_SELF` (dither entre niveles, sin lógica
-  custom). Sin terreno real todavía donde probarlo a distancia.
-
-**Bug de distribución real, encontrado y arreglado el 2026-08-15:** los
-centros de clump en `grass_field.gd::_build_field()` usaban
-`rng.randf() * field_radius` — uniforme en *radio*, no en *área* (el área de
-un anillo crece con r, así que esto amontonaba clumps cerca del centro del
-campo). Arreglado con `sqrt(rng.randf()) * field_radius` (muestreo uniforme
-estándar en disco). Verificado empíricamente antes de fijar el umbral del
-test nuevo, no adivinado: con el bug, radio medio de brizna ≈22,9 (default
-`field_radius=40`); con el fix, ≈27,5 (el teórico uniforme-en-área es
-26,7). Cubierto por `test_blade_positions_are_not_biased_toward_field_center`.
-
-99/99 tests, 6 escenas cargan sin error. **No jugado con el fix de
-distribución ni la punta en V puestos juntos** — pendiente antes de dar
-esto por cerrado del todo.
-
-## Estado del código, al 2026-08-14
-
-Validado headless: 79/79 tests, 5 escenas cargan sin errores
-(`player`/`grass_field`/`terrain_base`/`horse`/`main`) — falta jugarlo.
-
-Godot **4.7**, `run/main_scene = grass_field.tscn` (sin cambiar; terreno se
-prueba desde `terrain_base.tscn` con F6). Escenas: `main`, `player`, `horse`,
-`entity_base`, `grass_field`, `terrain_base`. Sin animación de personaje
-todavía — cápsulas graybox (player azul, enemigo/target esfera roja, suelo
-gris, interactuable cilindro amarillo — 1 unidad = 1 metro).
+Godot **4.7**, `run/main_scene = terrain_base.tscn` (cambiado el 2026-08-15;
+antes era `grass_field.tscn`, borrada — ver sección de migración de pasto).
+Escenas: `main`, `player`, `horse`, `entity_base`, `terrain_base`. Sin
+animación de personaje todavía — cápsulas graybox (player azul, enemigo/
+target esfera roja, interactuable cilindro amarillo — 1 unidad = 1 metro).
 
 **Movimiento** — pipeline `Brain → Intents → MovementBroker → Motors → Body`,
 15 estados de `LocomotionState.ID` (`IDLE`…`STRIKE`), un motor por estado,
@@ -268,22 +219,21 @@ todo resuelve contra `CombatDummy` en `scripts/world/`.
 **Cámara** — `CameraRig` (`Node3D` + `SpringArm3D`) tercera persona orbital.
 Apuntado/lock-on no confirmados en código propio todavía.
 
-**Mundo/terreno** — `Terrain3D` (plugin, no versionado) en `terrain_base.tscn`,
-regiones esculpidas en `world_data/terrain/`. `grass_field.tscn` sigue con su
-plano `Ground` fijo, sin terreno esculpido — son dos escenas de prueba
-separadas, no una migró a la otra todavía.
+**Mundo/terreno** — `Terrain3D` (plugin, no versionado) en `terrain_base.tscn`
+(ahora la escena principal), regiones esculpidas en `world_data/terrain/`,
+pasto plantado ahí mismo vía el instancer nativo de Terrain3D (ver abajo).
 
 **Debug** — `DebugOverlay` autoload, F1 togglea el panel. Reporter para
 Movement y Combat vía `BaseDebugContext`/`panel_key`, mismo panel, hacen
 merge (ver auditoría arriba — antes se pisaban).
 
-**Tests: 24 archivos, 99 tests, 99/99 en verde** (`godot --headless -s
-addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15).
-6 escenas cargan headless sin errores (`godot --headless --quit-after`).
-**Ninguno de los dos reemplaza jugarlo** (§17) — todo lo de terreno en
-particular, los 8 fixes de la auditoría de `scripts/base/`+`scripts/world/`,
-y el pasto (brizna + fix de distribución), todos del 2026-08-15, todavía no
-se jugaron del todo, sólo se verificaron headless.
+**Tests: 26 archivos, 93 tests, 93/93 en verde** (`godot --headless -s
+addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`, corrido 2026-08-15,
+tras borrar `test_grass_field.gd` tal cual). 5 escenas cargan headless sin
+errores. **Ninguno de los dos reemplaza jugarlo** (§17) — la migración de
+pasto a Terrain3D, la limpieza de `player_action_stack/`, y todo lo demás de
+esta sesión todavía no se jugaron del todo en el editor real, sólo se
+verificaron headless y con renders reales fuera del editor.
 
 **Git:** repo inicializado 2026-08-14; sesión del 14 (terreno + fix de
 `EntityController` + auditoría de `player_action_stack/`) quedó en 9 commits
@@ -292,6 +242,120 @@ sobre el pivote; sesión del 15 sumó la auditoría de `scripts/base/`+
 modelada → exploración de variantes → decisión final + fix de distribución,
 ver sección arriba). Sin pushear todavía — hace el push la persona, no el
 asistente.
+
+## Pasto en Terrain3D real + limpieza de player_action_stack, 2026-08-15
+
+**Decisión de arquitectura**: en vez de que `GrassField` siga resolviendo su
+propio LOD a mano, investigado y confirmado que `addons/terrain_3d` trae un
+instancer de foliage nativo (`Terrain3DInstancer`, scripteable —
+`add_transforms()`/`add_multimesh()`, hasta 10 niveles de LOD por asset vía
+`Terrain3DMeshAsset`) que acepta nuestro mesh (`grass_blade_single.blend`)
+y nuestro `ShaderMaterial` (viento + gradiente) tal cual. Verificado contra
+el motor real, no contra docs: `ClassDB.class_get_method_list()` para la API
+completa, y una prueba real (no headless) que registró el mesh, generó
+instancias con altura real del terreno (`Terrain3DData.get_height()`), y
+renderizó — funcionó.
+
+**Implementado**: `scripts/world/grass_terrain_instancer.gd`
+(`class_name TerrainGrassInstancer`, `@tool`), nodo `GrassInstancer` nuevo
+en `terrain_base.tscn`. Reusa el mismo algoritmo de dispersión en clumps que
+tenía `GrassField` (uniforme-en-área, misma seed), pero samplea la altura
+real del terreno por punto en vez de asumir un plano y=0, y entrega las
+transforms a `Terrain3DInstancer` en vez de armar su propio
+`MultiMeshInstance3D`.
+
+Bugs reales encontrados y arreglados en el camino (todos verificados contra
+el motor, no asumidos):
+- `Terrain3DAssets.set_mesh_asset(id, asset)` ignora el `id` que le pasás
+  para una entrada nueva — siempre asigna el siguiente índice secuencial, y
+  solo sobreescribe si el `id` coincide con algo ya existente. Hay que leer
+  `asset.get_id()` después de registrar, nunca asumir el valor pasado.
+- `Terrain3DData.get_height()` devuelve `NAN` para puntos genuinamente
+  válidos si se llama antes de que corra un frame — `_build()` corre
+  sincrónico en `_ready()` habría descartado el campo entero como "fuera de
+  región", pasto invisible sin error. Arreglado con `call_deferred()`.
+- `Transform3D.scaled(v)` escala también el `origin` (confirmado:
+  `Transform3D(basis, Vector3(3,0,4)).scaled(Vector3(2,2,2)).origin ==
+  (6,0,8)`), no solo la base — cada brizna con `scale` != 1.0 derivaba su
+  posición hasta un 40%. Bug real, preexistente también en `grass_field.gd`
+  (mismo patrón, nadie lo notó porque el margen del test de bounds era
+  generoso). Arreglado en los dos archivos con `scaled_local()`.
+- Bajo el renderer dummy headless, `Terrain3DInstancer.add_transforms()`
+  falla con "Mesh ID out of range" aunque el mesh esté bien registrado — no
+  se resuelve esperando más frames. Por eso los tests
+  (`test_grass_terrain_instancer.gd`) solo ejercitan la generación pura de
+  posiciones (`_generate_instance_data`, sí testeable headless via
+  `Terrain3DData` real), nunca llaman `add_transforms` directo.
+
+**Reducción de alcance reconocida**: `TerrainGrassInstancer` no tiene
+`max_blade_height`/`blade_width_scale` como `GrassField` — Terrain3D consume
+el mesh del `.blend` tal cual, sin gancho para re-escalar vértices antes de
+registrarlo. El tamaño total sigue variando por instancia vía
+`min_scale`/`max_scale` (uniforme en los 3 ejes), pero no independiente por
+eje. Revisar si hace falta más adelante (pre-hornear una variante
+re-escalada del mesh, por ejemplo).
+
+**De paso, arreglados 2 hallazgos de una revisión de arquitectura anterior**
+(`scripts/player_action_stack/`, ver auditoría de esta sesión):
+- `camera_rig.gd` tenía rutas hardcodeadas (`"../EntityController/..."`) que
+  romperían en silencio si se reusara en otra entidad (ej. Horse). Ahora
+  `entity_controller_path` es un `@export NodePath`, mismo patrón que
+  `MovementBroker.brain_path`. Sin cambios de comportamiento en
+  `player.tscn` (el default sigue resolviendo igual). Quedan 2 casos menores
+  del mismo patrón sin tocar (`climb_toggle_component.gd:31`,
+  `visuals_pivot.gd:23`) — defensivos, no rotos hoy, deuda conocida.
+- `walk_motor.gd`/`sprint_motor.gd`/`sneak_motor.gd` duplicaban el mismo
+  patrón de aceleración/desaceleración horizontal — extraído a
+  `BaseMotor.apply_ground_velocity()`. Agregados tests mínimos para los tres
+  (no existían antes).
+
+117/117 tests. No jugado en el editor real todavía — solo verificado con
+scripts headless/con-display-real fuera del editor.
+
+**Cierre de la migración, mismo día:** verificado en el editor real que el
+pasto se ve. Con eso, borrado lo obsoleto: `scenes/grass_field.tscn`,
+`scenes/grass_patch.tscn`, `scripts/world/grass_field.gd`,
+`test/unit/test_grass_field.gd`, y `tools/grass_density_probe.gd` (su única
+razón de ser era comparar variantes de `GrassField`, ya no aplica — decisión
+tomada sin preguntar, marcarla si hace falta reconsiderar). `project.godot`:
+`run/main_scene` → `terrain_base.tscn`. 93/93 tests tras el borrado.
+
+**Hallazgo al reimportar con el editor real** (`godot --headless --editor
+--import`): Terrain3D efectivamente hornea las instancias de pasto en los
+`.res` de región (`world_data/terrain/*.res` casi duplicaron su tamaño) y en
+`terrain_assets.tres` (el `Terrain3DMeshAsset` + `ShaderMaterial` quedan
+serializados ahí) — a diferencia de `GrassField`, que regeneraba todo en
+cada `_ready()` sin tocar disco. Verificado que esto es **determinista y
+estable**: correr el import dos veces produce bytes idénticos (mismo seed),
+y correr el juego real (`godot --headless scenes/terrain_base.tscn`, sin
+`--editor`) no toca esos archivos en absoluto — el guardado es específico
+del contexto editor, no pasa en gameplay. Coincide con el modelo real de
+Terrain3D (instancias persistidas junto con el terreno, como el esculpido),
+no es un bug.
+
+**Efecto colateral a revisar**: el mismo reimport creó 2 archivos de región
+nuevos (`terrain3d-02-01.res`, `terrain3d-02_00.res`, chicos — 9,8KB y
+37KB contra ~300KB de los reales) que no existían antes. Hipótesis: el
+`field_radius=40` de `GrassInstancer` (heredado del default de `GrassField`)
+alcanza un poco más allá del área realmente esculpida (~grid 3x3 alrededor
+del origen), y algunos puntos cerca del borde devuelven una altura válida
+(no NAN) en celdas de grilla sin esculpir de verdad, generando ahí instancias
+sueltas. No es peligroso (determinista, archivos chicos) pero probablemente
+valga la pena bajar `field_radius` para que coincida con el área realmente
+esculpida, en vez de dejar que Terrain3D siga creando regiones vacías.
+Pendiente, no resuelto en este pase.
+
+**Bug real encontrado por el usuario mirando el Asset Dock de Terrain3D**:
+`_build()` no buscaba una entrada existente antes de registrar el mesh —
+cada vez que `terrain_base.tscn` se abre en el editor (ni hace falta
+jugarlo, `_ready()` de un `@tool` corre solo con tener la escena cargada
+para editar), `next_index := assets.get_mesh_list().size()` crecía y se
+agregaba OTRA entrada de pasto en vez de reusar la anterior — duplicados
+horneables en `terrain_assets.tres` cada sesión de editor. Arreglado
+buscando una entrada existente por nombre (`mesh_name`) antes de decidir el
+índice; si existe, se reusa (overwrite in place); si no, recién ahí se
+agrega. Verificado corriendo el reimport 3 veces seguidas: se mantiene en 2
+entradas (`New Mesh` + la nuestra), estable/idéntico byte a byte.
 
 ## Próximo foco (propuesto, no comprometido)
 
@@ -303,10 +367,12 @@ asistente.
    stamina real ahora), horse, escaleras/escalera de mano, `CombatDummy` y el
    pasto con la punta en V + el fix de distribución ya puestos — nada de
    esto se verificó jugado todavía, sólo headless.
-3. **LOD real cuando haya terreno esculpido donde probarlo**: investigar
-   `GeometryInstance3D.visibility_range_begin/end` +
-   `visibility_range_fade_mode = FADE_SELF` para el cross-fade entre
-   niveles de densidad — discutido esta sesión, nada implementado todavía.
+3. **Verificar en el editor real que tunear `TerrainGrassInstancer` en vivo
+   no ensucia `world_data/terrain/*.res`** (ver sección de migración a
+   Terrain3D abajo) antes de agregarle setters de rebuild-en-vivo como los
+   que tiene `GrassField`. Después de eso: tunear niveles de LOD reales vía
+   `Terrain3DMeshAsset.set_last_lod()`/`set_lodN_range()` (superó a la idea
+   original de `GeometryInstance3D.visibility_range_*` — ver abajo, por qué).
 4. Corregir la violación de §14 en `strike_action.gd` (llama
    `inject_forced_proposal()` directo en vez de señal-hacia-arriba +
    `EntityController` reenvía) — antes de que otro sistema copie el patrón.
