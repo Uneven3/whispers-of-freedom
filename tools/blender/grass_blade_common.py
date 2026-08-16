@@ -21,7 +21,12 @@ GRASS_DIR = REPO_ROOT / "art" / "blender" / "grass"
 # hood). grass_field.gd rescales the Y axis at runtime to match its
 # max_blade_height @export knob, so these assets never need regenerating just
 # because that knob changes.
-HALF_WIDTH = 0.08  # matches grass_field.gd's fallback blade half-width
+HALF_WIDTH = 0.04  # matches grass_field.gd's fallback blade half-width — was
+                    # 0.08, thinned after live-tuning blade_width_scale in the
+                    # editor and settling on 0.5 (docs/AHORA.md, 2026-08-15);
+                    # baked here instead of leaving the live knob at 0.5 so
+                    # grass_field.gd's blade_width_scale stays a true 1.0 =
+                    # "as authored" default
 WAIST_HEIGHT = 0.30  # fraction of blade height where the profile is widest
 BASE_SINK = -0.06  # base point sits below z=0 so it doesn't read as
                     # infinitely thin against the ground

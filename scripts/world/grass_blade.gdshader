@@ -8,16 +8,27 @@ render_mode unshaded, cull_disabled;
 //   z = wind strength multiplier  — edges sway more/less
 
 uniform vec4 blade_color : source_color = vec4(0.22, 0.42, 0.18, 1.0);
+uniform vec4 tip_color : source_color = vec4(0.55, 0.68, 0.30, 1.0);
+// Set by grass_field.gd to match max_blade_height — VERTEX.y ranges over
+// roughly [-0.06 * blade_height, blade_height] (BASE_SINK to TIP_HEIGHT in
+// tools/blender/grass_blade_common.py, scaled by _rescaled_blade_mesh()), so
+// dividing by the same blade_height that produced that range normalizes the
+// gradient to base=0/tip=1 no matter how tall the blade is configured.
+uniform float blade_height = 1.0;
 uniform float wind_speed = 1.6;
 uniform float wind_strength = 0.35;
 uniform float sway_frequency = 2.2;
 uniform float sway_amplitude = 0.06;
+
+varying float v_height_fraction;
 
 void vertex() {
 	// Per-instance variation.
 	float phase = INSTANCE_CUSTOM.x * TAU;
 	float height_mult = 0.7 + INSTANCE_CUSTOM.y * 0.6;
 	float wind_mult = 0.6 + INSTANCE_CUSTOM.z * 0.8;
+
+	v_height_fraction = clamp(VERTEX.y / blade_height, 0.0, 1.0);
 
 	// Sway grows toward the blade tip (VERTEX.y is the up axis, blade is a
 	// vertical quad). Base on world position too so nearby blades stay coherent.
@@ -29,5 +40,5 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = blade_color.rgb;
+	ALBEDO = mix(blade_color.rgb, tip_color.rgb, v_height_fraction);
 }
