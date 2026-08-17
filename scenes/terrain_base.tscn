@@ -44,7 +44,6 @@ _shader_parameters = {
 &"noise_texture": SubResource("NoiseTexture2D_my3ep"),
 &"projection_threshold": null
 }
-show_checkered = true
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 
@@ -62,16 +61,28 @@ tonemap_mode = 2
 data_directory = "res://world_data/terrain"
 material = SubResource("Terrain3DMaterial_ekjg4")
 assets = ExtResource("terrain_assets")
-show_checkered = true
 top_level = true
 metadata/_edit_lock_ = true
 
 [node name="Player" parent="." unique_id=406302133 instance=ExtResource("player_scene")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62150633, 1.516521, -1.0169065)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62150633, 10.699263, -1.0169065)
 
 [node name="GrassInstancer" type="Node3D" parent="." unique_id=1426261369]
 script = ExtResource("grass_terrain_instancer")
 terrain_path = NodePath("../Terrain3D")
+card_texture_path = "uid://bq5hw4reh26yo"
+blade_count = 120000
+field_radius = 60.0
+clump_count = 10
+clump_spread = 20.0
+min_scale = 1.0
+max_scale = 1.0
+blade_color = Color(0.119483896, 0.22537702, 0.047799595, 1)
+tip_color = Color(0.24535516, 0.35523465, 0.06017971, 1)
+wind_speed = 0.0
+wind_strength = 0.0
+sway_frequency = 0.0
+sway_amplitude = 0.0
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2094110343]
 transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0, 10, 0)

@@ -95,6 +95,38 @@ def place_leaf(
     bm.faces.new((v_base, v_waist_r, v_waist_l))
 
 
+def place_card_quad(
+    bm: bmesh.types.BMesh,
+    angle_deg: float = 0.0,
+    tilt_deg: float = 0.0,
+    height_scale: float = 1.0,
+    half_width: float = HALF_WIDTH,
+    offset: mathutils.Vector = None,
+    uv_column: int = 0,
+    uv_columns_total: int = 1,
+) -> None:
+    """Rectangular 2-triangle billboard card (UV.y: 0 base / 1 tip, UV.x
+    within [uv_column, uv_column+1] of a uv_columns_total-wide atlas)."""
+    if offset is None:
+        offset = mathutils.Vector((0.0, 0.0, 0.0))
+    base_h = BASE_SINK * height_scale
+    tip_h = TIP_HEIGHT * height_scale
+    local = (
+        mathutils.Vector((-half_width, 0.0, base_h)),
+        mathutils.Vector((half_width, 0.0, base_h)),
+        mathutils.Vector((half_width, 0.0, tip_h)),
+        mathutils.Vector((-half_width, 0.0, tip_h)),
+    )
+    rotation = mathutils.Matrix.Rotation(math.radians(angle_deg), 4, "Z") @ mathutils.Matrix.Rotation(math.radians(tilt_deg), 4, "X")
+    verts = [bm.verts.new(rotation @ v + offset) for v in local]
+    face = bm.faces.new(verts)
+    uv_layer = bm.loops.layers.uv.verify()
+    u0 = uv_column / uv_columns_total
+    u1 = (uv_column + 1) / uv_columns_total
+    for loop, uv in zip(face.loops, ((u0, 0.0), (u1, 0.0), (u1, 1.0), (u0, 1.0))):
+        loop[uv_layer].uv = uv
+
+
 def setup_scene_units() -> None:
     scene = bpy.context.scene
     scene.unit_settings.system = "METRIC"
