@@ -2,10 +2,10 @@
 (art/blender/grass/grass_billboard_clump.blend), replacing the procedural
 LOD0/LOD1/LOD2 system with the 6 techniques from Kammerbild's "6 simple
 tips to improve grass billboards in CGI" (docs/pasto_godot.md, pivot
-session): 4 individualized card quads (own root offset, own scale, own
-atlas column) plus a tilt on top of yaw so the clump stays visible from a
-top-down angle. Base-fade (technique 4) is a shader concern (UV.y-driven),
-not baked here.
+session): 4 individualized card quads (own root offset, own scale, own atlas
+column) with four genuinely different plane orientations plus a tilt so the
+clump stays visible from a top-down angle. Base-fade is a shader concern
+(UV.y-driven), not baked here.
 
 Run headless from the repo root:
   blender --background --factory-startup --python tools/blender/generate_grass_billboard_clump.py
@@ -26,6 +26,8 @@ import mathutils
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from grass_blade_common import (
+    BLADE_COLOR,
+    GRASS_DIR,
     finish_object,
     place_card_quad,
     render_preview,
@@ -35,14 +37,32 @@ from grass_blade_common import (
 
 NAME = "grass_billboard_clump"
 ATLAS_COLUMNS = 3
-ROOT_ANGLES_DEG = (45.0, 135.0, 225.0, 315.0)
-ANGLE_JITTER_DEG = 12.0
+# A card is double-sided, so yaw and yaw + 180 degrees are the same plane.
+# The previous 45/135/225/315 ring therefore produced only a two-plane cross.
+# These four yaws remain distinct modulo 180 degrees.
+CARD_YAWS_DEG = (0.0, 45.0, 90.0, 135.0)
+ROOT_ANGLES_DEG = (25.0, 122.0, 214.0, 302.0)
+ANGLE_JITTER_DEG = 6.0
 ROOT_RADIUS = 0.09
 ROOT_RADIUS_JITTER = 0.02
 TILT_RANGE_DEG = (8.0, 18.0)
 HEIGHT_SCALE_RANGE = (0.85, 1.05)
-HALF_WIDTH_RANGE = (0.06, 0.09)
+# Match the broad atlas silhouettes. The old 0.06--0.09 range came from a
+# single geometric blade and squeezed a wide atlas cell into a thin strip.
+HALF_WIDTH_RANGE = (0.28, 0.36)
 RANDOM_SEED = 7
+
+
+def apply_preview_card_material(mesh: bpy.types.Mesh) -> None:
+    material = mesh.materials[0]
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    principled = next(node for node in nodes if node.type == "BSDF_PRINCIPLED")
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = bpy.data.images.load(str(GRASS_DIR / "grass_card_atlas.png"), check_existing=True)
+    principled.inputs["Base Color"].default_value = BLADE_COLOR
+    material.node_tree.links.new(texture.outputs["Alpha"], principled.inputs["Alpha"])
+    material.surface_render_method = "DITHERED"
 
 
 def build_mesh() -> bpy.types.Object:
@@ -59,7 +79,7 @@ def build_mesh() -> bpy.types.Object:
         ))
         place_card_quad(
             bm,
-            angle_deg=jittered_angle_deg,
+            angle_deg=CARD_YAWS_DEG[i] + rng.uniform(-ANGLE_JITTER_DEG, ANGLE_JITTER_DEG),
             tilt_deg=rng.uniform(*TILT_RANGE_DEG) * rng.choice((-1.0, 1.0)),
             height_scale=rng.uniform(*HEIGHT_SCALE_RANGE),
             half_width=rng.uniform(*HALF_WIDTH_RANGE),
@@ -75,6 +95,7 @@ def build_mesh() -> bpy.types.Object:
 
     obj = bpy.data.objects.new("GrassBillboardClump", mesh)
     finish_object(obj, mesh)
+    apply_preview_card_material(mesh)
     return obj
 
 

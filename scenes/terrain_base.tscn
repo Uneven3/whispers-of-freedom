@@ -70,6 +70,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62150633, 10.699263, -1.01
 [node name="GrassInstancer" type="Node3D" parent="." unique_id=1426261369]
 script = ExtResource("grass_terrain_instancer")
 terrain_path = NodePath("../Terrain3D")
+blade_asset_path = "uid://pfshnnd1ya50"
 card_texture_path = "uid://bq5hw4reh26yo"
 blade_count = 120000
 field_radius = 60.0

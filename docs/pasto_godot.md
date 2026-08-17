@@ -1245,3 +1245,96 @@ brizna individual. Ajustes pendientes para la próxima sesión:
 Sesión cortada acá a pedido del usuario ("sigamos mañana") — el
 mecanismo (alpha_to_coverage, MSAA, atlas horneado en UV) queda validado,
 solo falta ajustar contenido/cantidad de planos.
+
+## Actualización 2026-08-17 (décima sesión): atlas ahora renderiza mata
+completa por columna, con variedad real entre columnas
+
+Resuelto el punto 1 pendiente de la sesión anterior (`render_grass_card_alpha.py`
+mostraba una sola brizna por columna). Metodología `/iterate-safely`: plan
+escrito, criticado por un subagente sin contexto previo, un hallazgo real
+incorporado (ver abajo), después ejecutado y verificado contra el resultado
+real (imagen generada), no asumido correcto por compilar.
+
+**Cambio**: `build_leaf_object()` (una brizna, bmesh directo) reemplazado por
+`build_tuft_object()`, que arma una mata de N briznas alrededor de un centro
+usando `grass_blade_common.place_leaf()` — mismo helper que ya usa
+`generate_grass_blade_tuft.py`, mismo patrón de offsets-propios-por-brizna
+(no briznas pivotando desde un origen compartido). Config explícita por
+columna, no puramente aleatoria, para que las 3 se vean estructuralmente
+distintas: columna 0 = 3 briznas/radio 0.07 (mata rala), columna 1 = 4
+briznas/radio 0.09 (equivalente al look de `grass_blade_tuft.blend`), columna
+2 = 5 briznas/radio 0.11 (mata densa). Jitter de ángulo/radio/height_scale/
+half_width/tip_bend por brizna vía `random.Random(RANDOM_SEED + columna)` —
+reproducible por columna.
+
+**Hallazgo de la crítica, incorporado**: el plan original proponía extraer
+la lógica de arreglo de mata a un helper compartido en `grass_blade_common.py`
+(reusándola entre este script y `generate_grass_blade_tuft.py`). Descartado
+— el propio docstring de `grass_blade_common.py` prohíbe explícitamente
+lógica de arreglo por-variante ahí ("this module deliberately contains no
+per-variant arrangement logic"). `build_tuft_object()` quedó local a
+`render_grass_card_alpha.py`, duplicando el patrón en vez de compartirlo.
+
+**`COLUMN_SPACING`/`total_height` recalculados**: una mata de 5 briznas ocupa
+~4x el ancho de una sola brizna (raíz + jitter + half_width + tip_bend puede
+llegar a ~0.31 de radio), y `place_leaf()` escala tip y base por
+`height_scale` (hasta 1.05), a diferencia de la brizna única a escala fija
+1.0 de antes. Ambas constantes ahora se derivan de los rangos existentes
+(`TUFT_ROOT_RADII`, `HALF_WIDTH_RANGE`, etc.) en vez de números fijos, para
+no desincronizarse si esos rangos cambian después.
+
+**Iteración empírica sobre el resultado real (no solo sobre el código)**:
+la primera versión generada, inspeccionada abriendo el PNG, mostraba en las
+columnas 1 y 2 una brizna casi invisible — una línea finísima. Causa: la
+cámara del atlas mira por un solo eje fijo, y una brizna cuya cara queda
+~90°/270° respecto a ese eje se ve de canto (ancho de proyección ~0). Con
+`leaf_count=4` y ángulos arrancando en 0°, esto pasaba siempre (0/90/180/270
+caen exactos en el eje de cámara). Corregido con un offset angular aleatorio
+por columna (`pattern_offset_deg`, seedeado) que rota dónde arranca el
+anillo de briznas — reduce el riesgo pero no lo elimina matemáticamente
+(sigue habiendo ~13% de chance por brizna de caer cerca del canto para
+cualquier offset). Regenerado: sigue quedando una brizna casi de canto en
+la columna 0, visible como hilo fino. **Decisión del usuario, mostrándole el
+resultado**: seguir así en vez de seguir puliendo el ángulo a ciegas — una
+brizna delgada puede leerse bien como variación natural, se juzga mejor en
+contexto real (Godot) que iterando sobre el PNG plano.
+
+**Verificado**: `art/blender/grass/grass_card_atlas.png` regenerado (3
+columnas, matas de 3/4/5 briznas visiblemente distintas). `grass_billboard_clump.blend`
+también regenerado (mismo script, sin cambios de código — solo recoge el
+atlas nuevo vía UV). Reimport headless (`godot --headless --editor --import`)
+sin errores nuevos. 98/98 tests en verde
+(`godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit`).
+**Sin confirmar todavía por el usuario jugando** — el atlas nunca se vio
+renderizado con el shader/alpha_to_coverage real en juego, solo como PNG
+plano y como preview de Blender con material sólido (no aplica textura).
+
+**Pendiente, sin tocar esta sesión** (mismos 2 puntos anotados ayer,
+seguían fuera de alcance a propósito — problema distinto, no empaquetado
+en esta ronda):
+1. `generate_grass_billboard_clump.py`: bajar de 4 a 3 planos, agregar
+   rotación de cada plano hacia el centro (no solo el tilt vertical).
+2. Confirmación jugando en Godot con el atlas nuevo.
+
+## Actualización 2026-08-17 (undécima sesión): mata ancha diseñada para la tarjeta
+
+La entrada anterior describe un paso intermedio, no el asset final: proyectar
+una mata 3D de 3/4/5 hojas dejó siluetas demasiado angostas porque algunas
+hojas quedaban de canto frente a la cámara del atlas. La corrección no fue
+agregar más geometría 3D: `render_grass_card_alpha.py` ahora dibuja cada mata
+directamente en el plano X/Z de esa cámara. Cada una de las 3 columnas tiene
+11/13/15 hojas anchas, curvas, con un tercio de hojas bajas laterales para
+formar una mata abierta desde la base.
+
+El clump conserva 4 tarjetas —la referencia de Kammerbild pide al menos 3 o
+4, no hay razón visual para bajarlo a 3— pero sus yaw ahora son 0/45/90/135°.
+Antes usaba 45/135/225/315°: una tarjeta es doble cara, así que cada ángulo y
+su opuesto son el mismo plano; el supuesto clump de cuatro era en la práctica
+una cruz de dos. Las tarjetas también pasaron de half-width 0.06--0.09 a
+0.28--0.36 para respetar la proporción horizontal de las siluetas del atlas.
+
+El material de preview del `.blend` ahora consume la máscara alpha real, de
+modo que Blender muestra una mata y no cuatro rectángulos opacos. Regenerado
+atlas, `.blend` y preview; reimportado por Godot sin errores y 98/98 tests
+GUT en verde. La validación estética final sigue siendo jugarlo en la escena
+de terreno.
