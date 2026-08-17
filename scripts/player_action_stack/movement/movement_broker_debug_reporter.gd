@@ -18,6 +18,9 @@ func _ready() -> void:
 
 func _on_physics_tick_complete(intents: Intents, current_mode: int) -> void:
 	if OS.is_debug_build() and has_node("/root/DebugOverlay"):
+		var overlay = get_node("/root/DebugOverlay")
+		if not overlay.has_method("push"):
+			return
 		var m_name: String = LocomotionState.ID.keys()[current_mode]
 		var body_reader = _broker.get_body_reader()
 		var vel = body_reader.get_velocity()
@@ -53,7 +56,7 @@ func _on_physics_tick_complete(intents: Intents, current_mode: int) -> void:
 			var facts = _ledge_service.get_ledge_facts()
 			ledge_debug = facts.debug_text
 		
-		get_node("/root/DebugOverlay").push(1, {
+		overlay.push(1, {
 			"state": m_name + v_status,
 			"speed": snappedf(spd, 0.1),
 			"vel_y": snappedf(vel.y, 0.1), 
