@@ -87,8 +87,19 @@ Código que viole estas leyes no se implementa ni mergea.
   **Violación conocida:** `strike_action.gd` llama `inject_forced_proposal()`
   directo hoy (tiene la referencia a `MovementBroker` vía `CombatBroker`) —
   preexistente, pendiente de corregir, no motivo para debilitar la ley.
-- **§15** Comentarios sólo para invariantes/restricciones/workarounds, nunca
-  el *qué*. El rationale largo va a `docs/`.
+- **§15** Comentarios sólo para invariantes/restricciones/workarounds que no
+  son obvios leyendo el código — nunca el *qué*, nunca prosa larga. Máximo 3
+  líneas; si hace falta más, es señal de nombrar mejor la variable/función
+  en vez de explicarla aparte. El rationale largo va a `docs/`.
+  ```gdscript
+  # NO — explica el qué, se explaya
+  # Compute the fraction of the way this blade's height sits between
+  # min_scale and max_scale, used later to blend the height gradient.
+  var f := (blade_scale - min_scale) / maxf(max_scale - min_scale, 0.001)
+
+  # SÍ — el nombre ya dice el qué, sin comentario
+  var height_fraction := (blade_scale - min_scale) / maxf(max_scale - min_scale, 0.001)
+  ```
 - **§16** ~300 líneas por script es señal de dividir, no bloqueo duro.
 - **§17** Checkpoint = comportamiento validado **jugándolo**, no sólo con
   tests en verde — código que compila y tests que pasan no prueban que se
@@ -193,7 +204,7 @@ interpola/lee, nunca escribe estado de simulación.
 | `scripts/player_action_stack/combat/` | `CombatBroker` (prioriza bow/takedown/parry/strike, las cuatro siempre disponibles), `BowAction`/`ParryCounterAction`/`TakedownAction`/`StrikeAction`, `HitPauseComponent` | Resolución de golpes post-movimiento; lee `BodyReader`, nunca mueve el `Body` |
 | `scripts/player_action_stack/camera/` | `CameraRig` | Presentación pura; único dueño de loop declarado además de `MovementBroker`/`VisualsPivot` (§11) |
 | `scripts/player_action_stack/` (raíz) | `EntityController` | Fan-out único entre Movement/Combat (§14); sin lógica de gameplay propia |
-| `scripts/world/` | `Ladder`, `Stairs`, `CombatDummy`, `ArrowProjectile`, `GrassField` | Geometría/props del mundo y sus contratos de interacción (`apply_damage`, `is_parry_vulnerable`, etc.) |
+| `scripts/world/` | `Ladder`, `Stairs`, `CombatDummy`, `ArrowProjectile`, `TerrainGrassInstancer` | Geometría/props del mundo y sus contratos de interacción (`apply_damage`, `is_parry_vulnerable`, etc.) |
 | `scripts/debug_overlay.gd` (autoload) | Registro de `BaseDebugContext` por `panel_key`, toggle F1 | Estado propio del autoload permitido por §12; nunca escribe estado de otro sistema, sólo formatea lo que cada contexto le empuja |
 
 Lo no listado sigue la regla general: posee su dato, lo publica por señal o
