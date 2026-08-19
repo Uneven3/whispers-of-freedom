@@ -379,3 +379,42 @@ entradas (`New Mesh` + la nuestra), estable/idéntico byte a byte.
 5. Decidir la premisa de mundo/narrativa (`NORTE.md` → Decisiones abiertas)
    y la licencia del proyecto — ambas quedaron abiertas al pivotear lejos de
    Druid.
+6. **Bajar el poly count del swing trail VFX** (`scripts/player_action_stack/movement/visuals_pivot.gd:53`,
+   `_setup_swing_vfx()`) — encontrado con el profiler de Godot mientras se
+   medía el pasto (2026-08-19): usa una `SphereMesh` de radio 0.08 (casi un
+   punto en pantalla) pero nunca fija `radial_segments`/`rings`, así que
+   hereda el default de Godot (64/32, ~4000 tris por esfera). Con
+   `amount = 15` partículas por swing, eso es ~60000 triángulos por golpe
+   para un efecto casi invisible (material unshaded, alpha 0.8→0). Fix
+   esperado: bajar `radial_segments`/`rings` a algo como 6/4 en la
+   `SphereMesh` — debería ser imperceptible en un punto tan chico. No
+   tocado todavía porque no era el sistema que se estaba afinando esa
+   sesión (ver `docs/pasto_godot.md`, decimosexta sesión).
+7. **Investigar el costo real del terreno de Terrain3D (LOD/clipmap)** —
+   medido con el profiler real de Godot (2026-08-19, `docs/pasto_godot.md`
+   sesiones 17-18): el terreno solo, sin nada de pasto, ya pesa
+   ~720000 primitivos/frame (vista a altura de jugador) — es el piso de
+   costo dominante del proyecto, muy por encima de lo que aporta el pasto
+   en uso normal. No investigado todavía qué nivel de LOD/densidad de
+   malla está usando ni si se puede bajar sin perder calidad visible.
+
+## Rendimiento del pasto — resumen para la próxima sesión (2026-08-19)
+
+Medido con renderizado real de Godot (no `--headless`), ver
+`docs/pasto_godot.md` sesiones 17-18 para metodología y tablas completas:
+
+- **El pasto no es el cuello de botella a densidad normal.** El terreno
+  solo ya pesa ~720000 primitivos; subir el pasto de 1000 a 16000
+  instancias solo agrega ~115000-123000 más.
+- **El conteo de triángulos por tarjeta escala perfecto y lineal**
+  (8/4/2 tris → 4:2:1 en el delta de primitivos, medido con un material
+  de depuración que neutraliza el efecto de la transparencia). Bajar
+  triángulos por tarjeta no es la palanca que más rinde hoy.
+- **A densidad extrema sí se vuelve caro, pero no por triángulos**: a
+  radio=120/144000 instancias, FPS cae ~10x (71→7) mientras los
+  primitivos solo suben ~1.65x — hipótesis: overdraw de tarjetas
+  `cull_disabled` (ambas caras siempre) muy superpuestas
+  (`clump_spread` chico), no throughput de vértices. No confirmado con
+  un profiler de GPU real (no disponible en este flujo de trabajo).
+- Ver punto 7 arriba: el terreno de Terrain3D es el sospechoso principal
+  si hace falta seguir optimizando.

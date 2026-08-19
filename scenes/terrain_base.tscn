@@ -72,18 +72,19 @@ script = ExtResource("grass_terrain_instancer")
 terrain_path = NodePath("../Terrain3D")
 blade_asset_path = "uid://pfshnnd1ya50"
 card_texture_path = "uid://bq5hw4reh26yo"
-blade_count = 120000
-field_radius = 60.0
-clump_count = 10
-clump_spread = 20.0
-min_scale = 1.0
-max_scale = 1.0
-blade_color = Color(0.119483896, 0.22537702, 0.047799595, 1)
-tip_color = Color(0.24535516, 0.35523465, 0.06017971, 1)
+blade_count = 4000
+field_radius = 20.0
+clump_count = 2000
+clump_spread = 1.0
+min_scale = 0.8
+max_scale = 1.2
+blade_color = Color(0.26666668, 0.35686275, 0.02745098, 1)
+tip_color = Color(0.15294118, 0.27058825, 0.050980393, 1)
 wind_speed = 0.0
 wind_strength = 0.0
 sway_frequency = 0.0
 sway_amplitude = 0.0
+base_fade_height = 0.2
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2094110343]
 transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0, 10, 0)

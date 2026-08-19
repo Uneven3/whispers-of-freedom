@@ -1338,3 +1338,513 @@ modo que Blender muestra una mata y no cuatro rectángulos opacos. Regenerado
 atlas, `.blend` y preview; reimportado por Godot sin errores y 98/98 tests
 GUT en verde. La validación estética final sigue siendo jugarlo en la escena
 de terreno.
+
+## Actualización 2026-08-19 (duodécima sesión): tinte de color por columna, solo para inspección
+
+Pedido del usuario: usar distintos colores por columna del atlas "para que
+sea más fácil de probar" — hacer más fácil distinguir a simple vista si las
+3 columnas son realmente distintas (el defecto de la novena/décima sesión,
+la brizna casi de canto, se detectó recién mirando el PNG con atención).
+
+Antes de tocar código se le preguntó al usuario dónde debían aparecer los
+colores (atlas PNG / preview de Blender / shader real de Godot), porque
+`grass_blade.gdshader` (`scripts/world/grass_blade.gdshader:38`) ya calcula
+`ALBEDO` enteramente desde los uniforms `blade_color`/`tip_color` y solo lee
+`tex.a` de la textura — el RGB de la textura nunca se muestrea en el juego
+real. Eligió: colorear el atlas PNG.
+
+Implementado en `render_grass_card_alpha.py`: cada columna tiene ahora un
+`COLUMN_DEBUG_COLORS` fijo (rojo/verde/azul) aplicado vía **emission** del
+Principled BSDF (no base color: la escena de este script no tiene ninguna
+luz, así que base color solo habría renderizado negro). Es puramente
+cosmético para inspección humana del PNG/preview de Blender — no cambia
+geometría, UVs, ni nada que el shader del juego lea.
+
+Regenerado atlas y clump (sin cambios de código en
+`generate_grass_billboard_clump.py`). Verificado por inspección visual:
+las 3 columnas se distinguen claramente (rojo/verde/azul) y, esta vez, sin
+ninguna brizna de canto en ninguna de las 3 — la mata ancha 2D de la sesión
+anterior (undécima) parece haber resuelto ese problema de raíz, no solo
+mitigado. El preview del clump confirma que el tinte NO aparece ahí (usa el
+material verde real, como se esperaba). Reimport headless limpio y 98/98
+tests GUT en verde.
+
+**Pendiente, sin tocar esta sesión** (mismo punto de siempre): confirmación
+jugando en Godot con el atlas real vía `alpha_to_coverage` — sigue
+requiriendo una sesión interactiva del usuario, no se puede hacer headless.
+
+## Actualización 2026-08-19 (decimotercera sesión): las 4 tarjetas del clump cruzan por un eje compartido, no por raíces separadas
+
+El usuario mostró una referencia visual (un asterisco de líneas cruzando
+por un único punto, seguido de una foto de una mata real bien llena) y
+observó, mirando el `.blend` actual desde arriba: las tarjetas no se
+cruzan correctamente, no tienen escala distinta, y podrían inclinarse más
+para verse bien desde altura. Pidió también colores de debug más vivos —
+"cuando las tarjetas queden bien, elegimos mejor los colores" (o sea: los
+colores de esta sesión siguen siendo solo para depurar, no la elección
+final).
+
+Se usó `/iterate-safely`: plan escrito y mandado a un subagente sin
+contexto previo antes de tocar código. Encontró un problema geométrico
+real (ver abajo) y una tensión con el historial que valía la pena dejar
+explícita en vez de resolver en silencio.
+
+**`tools/blender/generate_grass_billboard_clump.py` — cambio principal**:
+se eliminó el offset de raíz por tarjeta (`ROOT_ANGLES_DEG`/`ROOT_RADIUS`/
+`ROOT_RADIUS_JITTER`). Las 4 tarjetas ahora pivotean todas desde el mismo
+eje vertical en el origen (yaws sin cambios: 0°/45°/90°/135°), cruzándose
+de verdad en vez de armar un molinillo de raíces separadas — confirmado
+visualmente comparando el render en planta antes/después: antes, 4 aspas
+sueltas con un hueco en el centro; después, una mata que irradia bien
+desde un centro compartido, mucho más parecida a la foto de referencia.
+
+**Esto es una reversión consciente**, no un olvido: el offset de raíz era
+parte de la técnica #2 de Kammerbild adoptada a propósito en el pivote de
+la novena sesión ("centro desplazado, escala individual, texturas diversas
+por plano"). Se revierte solo la parte del "centro desplazado", basado en
+la referencia visual concreta del usuario — la escala individual y las
+texturas diversas por plano se mantienen (ver siguiente punto). Es seguro
+porque `place_card_quad()` arma un rectángulo simétrico respecto al eje Z
+(no colapsa a una línea al compartir origen, a diferencia de
+`place_leaf()`'s perfil en punta — ver docstring de
+`generate_grass_blade_tuft.py`, un caso genuinamente distinto), y porque
+`base_fade_height` del shader ya desvanece el 12% inferior de cada
+tarjeta, justo donde el eje compartido sería más visible.
+
+**Escala por tarjeta**: `HEIGHT_SCALE_TIERS = (0.85, 1.00, 1.15, 1.30)`,
+uno fijo por tarjeta (con jitter chico), en vez de un único rango
+compartido — garantiza tamaños visiblemente distintos entre las 4 en vez
+de dejarlo al azar. El ancho (`half_width`) ya no es un rango
+independiente: se **deriva** de `height_scale * CELL_ASPECT`, donde
+`CELL_ASPECT` es la proporción ancho:alto real de una celda del atlas
+(≈0.80, más alta que ancha), ahora expuesta a nivel de módulo en
+`render_grass_card_alpha.py` e importada directamente. El subagente de
+crítica detectó que los primeros valores que había propuesto (tiers de
+ancho independientes del alto) iban a estirar la textura horizontalmente
+porque la proporción resultante se acercaba a 1:1 o más ancha que alta,
+muy lejos de la celda real del atlas — se corrigió derivando en vez de
+adivinar, así queda correcto por construcción y no se desincroniza si
+`CELL_ASPECT` cambia después.
+
+**Tilt**: `TILT_RANGE_DEG` de `(8, 18)` a `(18, 30)` grados, para mostrar
+más cara de cada tarjeta al mirar desde altura (pedido explícito).
+
+**Colores de debug**: `COLUMN_DEBUG_COLORS` pasó a valores totalmente
+saturados (rojo/verde/azul puros), y se agregó
+`scene.view_settings.view_transform = "Standard"` antes de renderizar el
+atlas — el tone-mapping por defecto de Blender (AgX) desaturaba el
+emission pese a que los valores RGB ya eran correctos. Siguen siendo solo
+para depuración: el shader real (`grass_blade.gdshader`) nunca lee el RGB
+de la textura, y la elección de colores "finales" queda para una vez que
+la forma esté aprobada.
+
+**Verificado**: reimport headless limpio, 98/98 tests GUT en verde. Render
+lateral y en planta del `.blend` regenerado inspeccionados a ojo (no solo
+el preview de Blender, que ya se sabe no coincide 1:1 con el shader real
+del juego). **Todavía sin mostrarle el resultado al usuario** al momento
+de escribir esto — pendiente su lectura antes de dar el look por
+aprobado.
+
+**Pendiente, sin tocar esta sesión**: elegir colores finales (no debug)
+una vez aprobada la forma; confirmación jugando en Godot con
+`alpha_to_coverage` real — sigue sin poder hacerse headless.
+
+## Actualización 2026-08-19 (decimocuarta sesión): el arreglo de las 4 tarjetas pasó de procedural a autorado a mano en Blender
+
+El centro compartido de la sesión anterior (decimotercera) no era lo que
+el usuario buscaba, aunque calzara con la imagen de referencia del
+asterisco. En vez de seguir adivinando fórmulas y mandarlas a critique,
+el usuario pidió hacer el ajuste él mismo en la UI de Blender, a ojo, y
+que yo solo lo asista con instrucciones — más rápido que el ciclo
+"yo propongo números → regenero headless → muestro capturas → el usuario
+corrige" que veníamos usando.
+
+**Archivo de trabajo**: `art/blender/grass/grass_clump_tuning.blend` (no
+es parte del pipeline — `render_grass_card_alpha.py` y
+`generate_grass_billboard_clump.py` no lo tocan; Godot lo importa solo
+porque vive dentro de `art/`, generando un `.import` sin usar, se puede
+borrar cuando se termine de iterar). Contiene 4 objetos `Card0`..`Card3`
+manipulables directamente en Object Mode (Location/Rotation/Scale en el
+panel N), en vez de una sola malla fusionada — así el usuario podía mover/
+rotar/escalar cada tarjeta con las herramientas normales de Blender.
+
+**Geometría de cada tarjeta cambió de 1 quad a 2 triángulos explícitos**
+(mismo costo real: un quad ya se renderiza como 2 triángulos en la GPU).
+El primer intento fue partir cada tarjeta en dos mitades verticales
+(objetos separados con bisagra en el borde compartido) para poder doblar
+"la mitad del plano" — el usuario lo rechazó por costar el doble de
+triángulos ("recuerda que estamos intentando ahorrar"). La versión que
+quedó: 1 objeto por tarjeta, con la diagonal inferior-izquierda/superior-
+derecha ya dividiendo el rectángulo en 2 triángulos rectángulos (su
+descripción: "2 triángulos rectángulos unidos en la base, uno arriba de
+otro"), y el doblez se logra moviendo a mano, en Edit Mode, el único
+vértice libre (el que no está sobre esa diagonal) fuera del plano.
+
+**Hallazgo importante durante la revisión**: al mirar el resultado desde
+arriba, media silueta se veía negra. No era un problema de geometría —
+el material de prueba usaba luz direccional (Principled BSDF + Sol), y
+al mirar el dorso de una cara sin luz esa cara se ve negra. El shader
+real (`grass_blade.gdshader`) es `unshaded` + `cull_disabled`, así que
+esto nunca iba a pasar en el juego. Se cambió el material de
+`grass_clump_tuning.blend` a emission puro (sin depender de luz) para
+poder juzgar la silueta real — con eso, la vista en planta mostró una
+mata bien llena y redondeada, sin agujeros, mucho más parecida a la foto
+de referencia original que cualquier intento anterior (molinillo de
+raíces separadas, o cruz de centro compartido).
+
+**Sobre "normal hacia arriba y sin sombras" para rendimiento** (pedido
+del usuario antes de pasar a Godot): `cast_shadows` ya está en 0 en
+`grass_terrain_instancer.gd:147` (ya testeado, `test_grass_terrain_instancer.gd`).
+Forzar la normal hacia arriba NO se implementó: el shader es `unshaded`
+(nunca lee la normal) y no hay SSAO/SSIL/SDFGI prendido en el
+`Environment` de `terrain_base.tscn`/`main.tscn` — hoy no habría ningún
+efecto visual ni de rendimiento. Queda anotado como optimización a
+reconsiderar si algún día se prende SSAO, no implementado ahora porque
+sería un cambio sin ningún efecto medible.
+
+**`generate_grass_billboard_clump.py` reescrito**: `CARD_TRANSFORMS`,
+una tupla con los 4 conjuntos exactos de `location`/`tilt_deg`/`yaw_deg`/
+`scale`/`tl_offset`, leídos directamente de los datos reales del `.blend`
+armado a mano (no aproximados a ojo). Esto es un cambio de filosofía
+respecto a las sesiones anteriores: ya no es una generación procedural
+con semilla (`RANDOM_SEED`) más rangos — es una forma autorada
+específica, igual que un artista guardaría 4 tarjetas hechas a mano.
+`place_card_quad()` ya no se usa para el clump (sigue existiendo en
+`grass_blade_common.py` por si se necesita en otro lado); en su lugar,
+`_place_hand_tuned_card()` arma las 2 caras triangulares explícitas y
+aplica la misma composición de matriz que usa un objeto de Blender con
+rotación XYZ-Euler (`Rz(yaw) @ Rx(tilt)`, escala uniforme antes de
+rotar) para reproducir el archivo de ajuste vértice por vértice.
+
+**Verificado**: reimport headless limpio, 98/98 tests GUT en verde. El
+preview regenerado coincide con el render de `grass_clump_tuning.blend`
+(mismo detalle negro chico del material con luz, esperado y sin
+relación con el juego real).
+
+**Pendiente**: el usuario va a abrir el editor de Godot él mismo para
+confirmar el resultado jugando/mirando la escena real — sigue siendo el
+único paso que no se puede hacer headless. Elegir colores finales (no
+debug) sigue pendiente de esa confirmación visual.
+
+## Actualización 2026-08-19 (decimoquinta sesión): primera prueba real en Godot — proporción de las tarjetas y densidad de instancias
+
+El usuario probó el resultado de la sesión anterior en el editor de
+Godot (`scenes/terrain_base.tscn`) y reportó dos cosas: las tarjetas se
+ven muy altas y angostas (pidió bajarlas un poco y ensancharlas), y no
+sabía qué valor de `blade_count` usar para que las instancias del clump
+se distribuyan bien por el campo — ya lo había bajado de 120000 a 20000
+a mano, junto con `field_radius` (60→20), `clump_count` (10→50),
+`clump_spread` (20→22), los colores base/tip, y agregó
+`base_fade_height=0.2` (default del shader es 0.12) — todo commiteable
+como cambios normales de escena en `terrain_base.tscn`, no tocado por
+ningún script.
+
+**Proporción de las tarjetas**: se agregaron `CARD_WIDTH_SCALE = 1.15` y
+`CARD_HEIGHT_SCALE = 0.88` en `generate_grass_billboard_clump.py`,
+aplicados sobre `CARD_TRANSFORMS` (incluido el offset del doblez, sus
+componentes x/z escalan con el ancho/alto respectivamente; la componente
+y del doblez —la que sale del plano— se dejó sin tocar porque no es una
+medida de ancho ni de alto). Se evaluó la alternativa de lograr esto
+regenerando el atlas con una silueta más ancha/corta (cambiando
+`CELL_ASPECT`), que hubiera sido más "correcta" en el sentido de no
+introducir ningún estiramiento de textura, pero se descartó por ahora:
+requiere re-renderizar y re-inspeccionar visualmente el atlas para un
+ajuste que el usuario pidió como "un poco" — el estiramiento con estos
+factores moderados (15%/12%) no debería notarse, y el cambio queda en un
+solo archivo, fácil de revertir o afinar más. Regenerado, reimportado,
+98/98 tests en verde.
+
+**Densidad de instancias (`blade_count`)**: en vez de adivinar, se midió
+directamente. `_generate_instance_data()` (la lógica de colocación de
+`grass_terrain_instancer.gd`) ya es pura/testeable — mismo patrón que
+usan los tests existentes (`test_grass_terrain_instancer.gd`). Se corrió
+un test temporal (borrado después de usarlo, no quedó en el repo) contra
+la configuración real de `terrain_base.tscn`
+(`field_radius=20, clump_count=50, clump_spread=22`) probando varios
+`blade_count`:
+
+| blade_count (crudo) | instancias colocadas | supervivencia |
+|---|---|---|
+| 2000 | 559 | 27.9% |
+| 4000 | 1092 | 27.3% |
+| 6000 | 1673 | 27.9% |
+| 8000 | 2241 | 28.0% |
+| 12000 | 3402 | 28.4% |
+| 20000 | 5715 | 28.6% |
+
+La tasa de supervivencia es constante (~28%) para esta combinación de
+`field_radius`/`clump_count`/`clump_spread` — el resto se descarta por
+caer fuera de `field_radius` desde el origen (`clump_spread=22` es mayor
+que `field_radius=20`, así que cada clump ya dispersa casi por todo el
+campo por sí solo; con 50 centros de clump la cobertura es bastante
+uniforme por construcción, sin necesidad de tocar nada más para eso).
+
+Con `blade_count=20000` actual, eso son ~5715 instancias reales en un
+campo de área ≈1257 m² (radio 20) — casi 4.5 instancias/m², bastante
+denso considerando que cada clump mide ahora ~1.3m de diámetro. Cálculo
+para una densidad más moderada (separación promedio ~1.3m entre
+instancias, algo de superposición pero no tanta): ≈740 instancias
+colocadas → `blade_count` crudo ≈ 740 / 0.28 ≈ **2600-3000** como punto
+de partida. Es una estimación (el packing real no es una grilla
+perfecta), no un número exacto — recomendado probar ahí y ajustar a
+ojo; ~1800 para más ralo, ~5000 para más lleno.
+
+**Pendiente**: el usuario todavía tiene que mirar el resultado con estos
+nuevos valores de proporción de tarjeta, y decidir el `blade_count`
+final a ojo dentro del rango sugerido.
+
+## Actualización 2026-08-19 (decimosexta sesión): forma final autorada a mano, con escala no uniforme por eje; el rendimiento reportado no mejoró
+
+El usuario reportó que el rendimiento no mejoró tras bajar `blade_count`
+(sin más detalle todavía — no investigado esta sesión, ver "Pendiente").
+En paralelo siguió editando `art/blender/grass/grass_clump_tuning.blend`
+a mano (reabrió el archivo de la sesión anterior, sin el
+`CARD_WIDTH_SCALE`/`CARD_HEIGHT_SCALE` que se le había aplicado solo al
+generador real) y llegó a un resultado que le gustó más que el anterior.
+Pidió llevarlo a Godot.
+
+**Cambio de enfoque al leer el archivo de vuelta**: la escala de cada
+tarjeta ya no es uniforme — el usuario usó factores distintos por eje
+(ej. `Card0` quedó en `scale=(1.36, 0.95, 0.61)`: bastante más ancha en
+X, bastante más baja en Z). Esto logra, tarjeta por tarjeta y a mano, lo
+mismo que `CARD_WIDTH_SCALE`/`CARD_HEIGHT_SCALE` intentaban lograr de
+forma global en la sesión anterior — así que esas dos constantes se
+eliminaron del generador, ya no hacen falta. También el tilt dejó de ser
+uniforme (10° en las 4 en la sesión anterior; ahora 10°/-10°/0°/-5°), y
+en `Card0` el doblez ya no mueve un solo vértice: se movieron 2 de los 4
+(el vértice compartido de la diagonal también se desplazó un poco, no
+solo el vértice libre).
+
+**`generate_grass_billboard_clump.py` simplificado en vez de complicado
+más**: en lugar de seguir extendiendo la fórmula (`tl_offset` sobre un
+template derivado de `CELL_ASPECT`) para cubrir escala no uniforme y
+más de un vértice movido, `CARD_TRANSFORMS` ahora guarda directamente
+los 4 vértices locales tal cual los tiene el `.blend` (sin descomponer
+en "template + offset"), más `location`/`tilt_deg`/`yaw_deg`/`scale`
+(este último como tupla de 3, no un escalar). Es más simple Y más
+general: sobrevive a que el usuario mueva cualquier combinación de
+vértices en el futuro, sin que el generador necesite un caso especial
+por cada patrón de edición. `CELL_ASPECT` ya no se importa de
+`render_grass_card_alpha.py` en este archivo (dejó de usarse).
+
+**Verificado**: preview regenerado coincide con el `.blend` de tuning,
+reimport headless limpio, 98/98 tests GUT en verde.
+
+**Pendiente**: investigar por qué el rendimiento no mejoró al bajar
+`blade_count` — no se tocó esta sesión, hace falta más información del
+usuario (¿bajó `blade_count` en el nodo de la escena y volvió a
+correr?, ¿qué está midiendo — FPS, un profiler?, ¿el field_radius/
+distancia de cámara son los mismos que antes?) antes de poder buscar la
+causa real en vez de adivinar.
+
+## Actualización 2026-08-19 (decimoséptima sesión): medición real de rendimiento — el pasto no es el cuello de botella
+
+El usuario, mirando el profiler de Godot, encontró que las partículas
+(swing trail del arma) suben mucho más los "objetos primitivos dibujados"
+que el pasto — anotado como pendiente para otra sesión en `docs/AHORA.md`
+("Próximo foco", punto 6: `visuals_pivot.gd:53`, `SphereMesh` sin bajar
+`radial_segments`/`rings`, ~4000 tris por partícula × 15 partículas).
+Con eso anotado, pidió medir rendimiento real con distintas densidades de
+pasto (y comparar "distintos pastos"), usando las herramientas de Godot,
+con captura de pantalla, y `/iterate-safely`.
+
+**Metodología, revisada por un subagente antes de correr nada**: un
+script GDScript temporal (`extends SceneTree`, corrido vía
+`godot --path . -s <script>.gd`, **sin** `--headless` — confirmado por la
+crítica que este patrón ya se usó antes en este repo,
+`tools/grass_density_probe.gd` (ya borrado), documentado en
+`docs/AHORA.md` línea ~50: hace falta pantalla real, el driver dummy de
+`--headless` no rasteriza nada). La crítica encontró y corrigió varios
+supuestos equivocados antes de ejecutar:
+
+1. Los valores que yo asumía en la escena (`clump_count=50,
+   clump_spread=22`) estaban desactualizados — el usuario los había
+   seguido ajustando; los reales al momento de medir eran
+   `field_radius=20, clump_count=2000, clump_spread=1.0,
+   min_scale=0.8, max_scale=1.2, blade_count=4000`. Se verificó de nuevo
+   contra el archivo real antes de escribir el script, no contra lo que
+   yo recordaba.
+2. Comparar mallas sin UV (`grass_blade_tuft/single/flat.blend`) contra
+   la actual (`grass_billboard_clump.blend`, con UV) bajo el shader real
+   iba a ser una comparación inválida: `grass_blade.gdshader` usa
+   `render_mode ... alpha_to_coverage` y el texel `(0,0)` del atlas
+   (donde cae una malla sin UV) resultó ser **totalmente transparente**
+   (confirmado leyendo el PNG con PIL: `(0, 0, 0, 0)`) — las mallas sin
+   UV se hubieran descartado casi por completo en vez de rasterizarse,
+   dando un "mejor rendimiento" falso por transparencia, no por menos
+   geometría real. Por eso la comparación de mallas (`grass_blade_tuft`
+   vs `grass_blade_single` vs `grass_blade_flat` vs el clump actual)
+   **no se corrió esta sesión** — necesita un material de depuración con
+   `ALPHA=1.0` fijo para ser válida, más trabajo del que ameritaba dado
+   el hallazgo principal (ver abajo). Queda pendiente si se quiere
+   retomar.
+3. Riesgo de que la cámara del jugador se mueva sola durante la corrida
+   larga (físicas, `camera_rig.gd`) contaminando la medición — en vez de
+   intentar congelar todos los sistemas posibles (fragil, no verificado
+   uno por uno), el script mide el drift de la cámara real
+   (`Camera3D` en `CameraRig/Lens`, no `%Camera3D` porque ese acceso por
+   nombre único no funciona desde un script externo a la escena) durante
+   cada ventana de muestreo y lo loguea con advertencia si supera 5cm —
+   ningún caso lo disparó.
+4. En vez de esperar una cantidad fija de frames "a ciegas" tras cambiar
+   `blade_count`, el script espera a que
+   `Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME` se estabilice (5 frames
+   seguidos con el mismo valor, tope de 90) antes de empezar a promediar
+   — confirma que el rebuild diferido realmente terminó en vez de
+   suponerlo.
+
+**Barrido de densidad** (`blade_count` ∈ {1000, 2000, 4000, 8000, 16000},
+resto de la config igual a la escena real), 2 vistas por densidad (altura
+de jugador y pájaro a 35m, siguiendo la lección de
+`tools/grass_density_probe.gd`: "el número solo no alcanza, dos vistas
+pueden favorecer variantes distintas"). Capturas guardadas (no
+commiteadas, quedan en el directorio de trabajo temporal de la sesión).
+
+| blade_count | vista | fps | primitivos | draw calls |
+|---|---|---|---|---|
+| 1000 | jugador | 1.0 (outlier — stall de compilación de shader en la primera muestra) | 727478 | 110 |
+| 1000 | pájaro | 78.7 | 160830 | 20 |
+| 2000 | jugador | 107.0 | 735166 | 110 |
+| 2000 | pájaro | 61.0 | 168518 | 20 |
+| 4000 | jugador | 61.0 | 750558 | 110 |
+| 4000 | pájaro | 69.0 | 183910 | 20 |
+| 8000 | jugador | 68.0 | 781246 | 110 |
+| 8000 | pájaro | 63.0 | 214598 | 20 |
+| 16000 | jugador | 47.1 | 842822 | 110 |
+| 16000 | pájaro | 46.0 | 276174 | 20 |
+
+**Hallazgo principal**: el pasto NO es el cuello de botella actual. La
+diferencia de primitivos entre `blade_count=1000` y `=16000` (16x más
+instancias) es de solo ~115000 primitivos en ambas vistas — coincide
+bastante bien con lo esperado matemáticamente (con `clump_spread=1.0` y
+`field_radius=20` la tasa de supervivencia de `_generate_instance_data()`
+debería ser cercana al 100%, a diferencia del ~28% medido en la sesión 15
+con `clump_spread=22`; ~15000 instancias adicionales × 8 tris/instancia
+≈ 120000, contra los ~115000 medidos). Pero el **piso** ya está en
+~600000-750000 primitivos incluso con blade_count=1000 — eso es
+mayormente el terreno de Terrain3D (su propio clipmap/LOD), no el pasto.
+Los draw calls (110 vista jugador, 20 vista pájaro) se mantienen
+**constantes** sin importar `blade_count` — esperado, MultiMesh empaqueta
+todas las instancias en pocos draw calls, no hay culling por instancia
+(coherente con que el delta de primitivos es casi idéntico entre las dos
+vistas pese a apuntar a lugares distintos — todas las instancias se
+dibujan siempre, se vean o no).
+
+**FPS ruidoso**, esperado en este hardware (`AMD Radeon RX Polaris11`,
+GPU vieja/débil) con vsync/fps-cap desactivados a propósito para no tapar
+diferencias reales — no es monótono con `blade_count`, la primera muestra
+tiene un stall de compilación de shader que la invalida. Se prioriza
+primitivos/draw-calls (deterministas) sobre FPS (ruidoso) para
+interpretar estos resultados.
+
+**Conclusión práctica**: bajar más `blade_count` va a seguir sin mover
+mucho la aguja del rendimiento total, porque el pasto es una fracción
+chica del costo real. Si el rendimiento sigue sin mejorar, el próximo
+sospechoso lógico es el propio terreno (densidad de malla/LOD de
+Terrain3D), no el pasto — no investigado todavía esta sesión.
+
+**Pendiente**: la comparación de "distintos pastos" (complejidad de
+malla) con el material de depuración `ALPHA=1.0`, si se decide que vale
+la pena dado que el hallazgo principal ya resta importancia a esa
+pregunta; investigar el costo real del terreno de Terrain3D (LOD/clipmap)
+como sospechoso principal ahora; y el swing trail VFX ya anotado en
+`docs/AHORA.md`.
+
+## Actualización 2026-08-19 (decimoctava sesión): comparación justa de mallas + escalera de estrés — el triángulo importa menos que el overdraw a densidad extrema
+
+El usuario pidió profundizar la sesión anterior: correr la comparación de
+mallas que se había saltado, y estresar con radio/densidad mucho más
+altos, para encontrar qué es lo más caro del proyecto. De nuevo con
+`/iterate-safely` — un subagente revisó el plan antes de correr nada y
+encontró un bloqueante real (`multimesh.transform_format` nunca se
+seteaba, hubiera fallado en el primer intento) y dos correcciones de
+metodología (había que ocultar/liberar el `MultiMeshInstance3D` de debug
+del test de mallas antes de arrancar el de densidad, o iba a sumar un
+offset constante a todo lo que viniera después; y la cámara aérea fija no
+era justa entre radios distintos, había que escalar su altura). Ambas se
+aplicaron antes de ejecutar.
+
+**Test A — terreno solo** (`GrassInstancer.visible = false`, confirmado
+que `rebuild()` limpia instancias antes de retornar aunque esté oculto):
+~719798 primitivos (vista jugador) / ~153150 (vista pájaro) — consistente
+con el piso ya visto en la sesión 17. Sin pasto, el terreno solo ya está
+ahí.
+
+**Test B — comparación justa de mallas**, evitando pasar por
+`Terrain3DInstancer`/`Terrain3DAssets` (que hubiera sido una comparación
+trucha por transparencia, ver sesión 17): un `MultiMeshInstance3D` suelto
+por fuera de Terrain3D, poblado llamando directo
+`TerrainGrassInstancer._generate_instance_data()` (función pura,
+confirmado que no pasa por rebuild() ni necesita estar en el árbol), con
+un material de depuración a mano (`ALPHA = 1.0` fijo, sin
+`alpha_to_coverage`) para que las 4 mallas rindan geometría comparable
+sin importar si tienen UV. `blade_count=16000` (≈15378 colocadas) para
+las 4:
+
+| malla | tris/instancia | UV | primitivos (jugador) | delta vs. terreno solo | primitivos (pájaro) | delta vs. terreno solo |
+|---|---|---|---|---|---|---|
+| `grass_billboard_clump.blend` (actual) | 8 | sí | 842822 | +123024 | 276174 | +123024 |
+| `grass_blade_tuft.blend` | 8 | no | 842822 | +123024 | 276174 | +123024 |
+| `grass_blade_single.blend` | 4 | no | 781310 | +61512 | 214662 | +61512 |
+| `grass_blade_flat.blend` | 2 | no | 750554 | +30756 | 183906 | +30756 |
+
+Relación **exactamente lineal** con el conteo de triángulos (8:4:2 →
+123024:61512:30756, proporción 4:2:1 exacta) y **sin ninguna diferencia**
+entre las dos mallas de 8 triángulos (con UV vs sin UV) — confirma que el
+costo real es el conteo de triángulos, la presencia de UV no influye en
+absoluto en el costo de primitivos (solo en shading, ya controlado acá
+con el material fijo). También confirma, con datos, la sospecha de la
+sesión anterior: si se hubiera comparado con el shader real (`alpha_to_coverage`
++ atlas), las mallas sin UV hubieran parecido "gratis" por transparencia,
+no por menos geometría — hubiera sido una conclusión falsa.
+
+**Test C — escalera de radio/densidad**, con el `GrassInstancer` real,
+`(field_radius, blade_count)` en `(20, 4000)` → `(60, 36000)` →
+`(120, 144000)` (escalado ≈ área, `clump_count`/`clump_spread` de la
+escena sin cambiar):
+
+| radio | blade_count crudo | colocadas | fps jugador | primitivos jugador | fps pájaro | primitivos pájaro |
+|---|---|---|---|---|---|---|
+| 20 | 4000 | 3845 | 71.0 | 750558 | 71.0 | 183910 |
+| 60 | 36000 | 35543 | 78.0 | 914198 | 38.0 | 551318 |
+| 120 | 144000 | 143058 | **7.0** | 1237310 | 22.8 | 161286 |
+
+**Hallazgo principal de este barrido**: a radio 120 (144000 instancias),
+el FPS en vista jugador se derrumba a **7** — un desplome de ~10x —
+mientras que los primitivos solo subieron ~1.65x respecto a radio 20
+(750558→1237310). El conteo de triángulos por sí solo no explica una
+caída así de desproporcionada. Hipótesis más probable, no confirmada con
+un profiler de GPU real (no disponible en este flujo): **overdraw/costo
+de fragmentos**, no throughput de vértices — el shader usa
+`cull_disabled` (cada tarjeta se dibuja por ambas caras siempre) y con
+`clump_spread=1.0` las matas quedan muy apretadas entre sí; a densidad
+extrema, muchas tarjetas alfa-blended se superponen en los mismos
+píxeles cerca del jugador, y en una GPU vieja/débil (`AMD RX Polaris11`,
+ver sesión 17) eso pesa mucho más que subir el conteo de triángulos.
+
+**Nota metodológica, no un resultado**: la cámara pájaro se reposicionó
+más alto (`altura ≈ radio × 1.75`) para mantener el campo completo en
+cuadro en cada paso — pero eso también aleja la cámara del terreno, y
+Terrain3D reduce el detalle de su malla por distancia (LOD), a diferencia
+del pasto (MultiMesh, sin culling por instancia, confirmado en la sesión
+17). Por eso los primitivos de la vista pájaro en radio 120 (161286)
+**bajan** respecto a radio 60 (551318) pese a haber más pasto — no es que
+el pasto se abarató, es que alejar la cámara abarató el terreno de fondo
+más de lo que el pasto adicional costó. La vista jugador (misma altura
+siempre, sin este confundido) es la métrica confiable para este barrido.
+
+**Conclusión práctica actualizada**: el terreno sigue siendo el piso de
+costo a densidades bajas/moderadas (sesión 17). A densidad extrema, el
+pasto SÍ se vuelve caro, pero no principalmente por triángulos — por
+overdraw de tarjetas dobles-cara superpuestas. Si en algún momento hace
+falta pasto muy denso en un radio grande, la palanca más prometedora no
+es bajar triángulos por tarjeta (Test B mostró que ya escala perfecto y
+linealmente) sino reducir el solapamiento/densidad de superposición
+(`clump_spread` más generoso, o considerar `cull_disabled` solo cuando
+haga falta).
+
+**Pendiente**: no se investigó el costo del terreno de Terrain3D en sí
+(LOD/clipmap) más allá de confirmar que domina el piso — sigue siendo el
+sospechoso principal para una futura sesión si hace falta seguir
+optimizando. El swing trail VFX sigue anotado en `docs/AHORA.md` sin
+tocar.
