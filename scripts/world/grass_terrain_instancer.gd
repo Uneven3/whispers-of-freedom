@@ -13,6 +13,9 @@ extends Node3D
 ## visibility has no effect otherwise.
 
 ## Node implementing the Terrain3D class (has get_assets()/get_instancer()/get_data()).
+const MATERIAL_ATLAS_ALPHA := 0
+const MATERIAL_OPAQUE := 1
+
 @export var terrain_path: NodePath:
 	set(value):
 		terrain_path = value
@@ -24,6 +27,30 @@ extends Node3D
 @export_file("*.png") var card_texture_path: String = "res://art/blender/grass/grass_card_atlas.png":
 	set(value):
 		card_texture_path = value
+		_queue_rebuild()
+
+## Qué shader usa el pasto. `alpha_to_coverage` es un render_mode, o sea que
+## se fija al compilar, así que la variante opaca es un shader aparte y no
+## un uniform -- ver el encabezado de grass_blade_opaque.gdshader.
+##
+## OPAQUE es la técnica correcta para la capa densa, medido: con la
+## geometría fija el alfa cuesta entre 18x y 25x más porque pierde Early-Z,
+## y encima cubre menos píxeles (docs/presupuesto_render.md).
+##
+## ATLAS_ALPHA sólo sirve para mallas CON UV. grass_blade_single no tiene,
+## así que con ATLAS_ALPHA se renderiza invisible (samplea el atlas en
+## (0,0), alfa 0, descarta todo) -- de ahí la advertencia de _validate().
+@export_enum("atlas_alpha", "opaque") var material_mode: int = MATERIAL_ATLAS_ALPHA:
+	set(value):
+		material_mode = value
+		_queue_rebuild()
+
+## Altura de la malla en metros. Sólo la usa el shader opaco, para
+## normalizar el gradiente base->punta (el shader del atlas lo saca de UV.y,
+## que la brizna no tiene). grass_blade_single mide 1,06.
+@export var blade_height: float = 1.0:
+	set(value):
+		blade_height = value
 		_queue_rebuild()
 
 @export var blade_count: int = 10000:
@@ -117,6 +144,8 @@ func rebuild() -> void:
 		push_warning("TerrainGrassInstancer: could not load '%s'" % blade_asset_path)
 		return
 
+	_warn_if_alpha_mode_on_uvless_mesh(base_scene)
+
 	var mesh_name := "TerrainGrassInstancer_%s" % name
 	var mesh_id: int = _register_mesh_asset(assets, mesh_name, base_scene)
 
@@ -160,6 +189,8 @@ func _register_mesh_asset(assets, mesh_name: String, base_scene: PackedScene) ->
 	return mesh_asset.get_id()
 
 func _build_shader_material() -> ShaderMaterial:
+	if material_mode == MATERIAL_OPAQUE:
+		return _build_opaque_material()
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/world/grass_blade.gdshader")
 	mat.set_shader_parameter("card_texture", load(card_texture_path))
@@ -221,3 +252,53 @@ func _generate_instance_data(terrain_data, origin: Vector3) -> Dictionary:
 		colors.append(Color(rng.randf_range(0.0, 1.0), height_frac, rng.randf_range(0.0, 1.0), 0.0))
 
 	return {"transforms": transforms, "colors": colors}
+
+
+func _build_opaque_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/world/grass_blade_opaque.gdshader")
+	mat.set_shader_parameter("blade_color", blade_color)
+	mat.set_shader_parameter("tip_color", tip_color)
+	mat.set_shader_parameter("blade_height", blade_height)
+	mat.set_shader_parameter("wind_speed", wind_speed)
+	mat.set_shader_parameter("wind_strength", wind_strength)
+	mat.set_shader_parameter("sway_frequency", sway_frequency)
+	mat.set_shader_parameter("sway_amplitude", sway_amplitude)
+	return mat
+
+
+## El shader del atlas usa tex.a como ALPHA, así que una malla sin UV
+## samplea en (0,0), obtiene alfa 0 y se descarta entera: el pasto se
+## dibuja INVISIBLE, pagando igual el costo de vértices y sin un solo
+## error en consola. Ya nos costó una sesión entera de mediciones falsas
+## (docs/presupuesto_render.md, "Bug encontrado midiendo") y volvió a
+## aparecer apenas alguien cambió blade_asset_path en el editor.
+##
+## push_warning y no assert (§5): lo dispara un dato que un diseñador puede
+## producir desde el Inspector, no un invariante de programador.
+func _warn_if_alpha_mode_on_uvless_mesh(base_scene: PackedScene) -> void:
+	if material_mode != MATERIAL_ATLAS_ALPHA:
+		return
+	var mesh := _first_mesh_of(base_scene)
+	if mesh == null or mesh.get_surface_count() == 0:
+		return
+	if (mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV) != 0:
+		return
+	push_warning(("TerrainGrassInstancer: '%s' no tiene UV y material_mode es "
+		+ "atlas_alpha, asi que se va a renderizar invisible. Usar "
+		+ "material_mode = opaque para esta malla.") % blade_asset_path)
+
+
+func _first_mesh_of(packed: PackedScene) -> Mesh:
+	var instance: Node = packed.instantiate()
+	var mesh: Mesh = null
+	var stack: Array[Node] = [instance]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+			mesh = (node as MeshInstance3D).mesh
+			break
+		for child in node.get_children():
+			stack.append(child)
+	instance.queue_free()
+	return mesh

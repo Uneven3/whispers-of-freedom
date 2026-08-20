@@ -13,8 +13,9 @@ extends SceneTree
 ##
 ## Argumentos (después de `--`):
 ##   --scene=res://...   escena a medir (default: scenes/terrain_base.tscn)
-##   --grass=opaque      reemplaza el GrassInstancer por el probe opaco
+##   --grass=opaque|alpha fuerza el material_mode del GrassInstancer
 ##   --png=/ruta         dónde guardar la captura de overdraw
+##   --play              no mide: deja la escena corriendo para jugarla
 ##
 ## La resolución importa: la escena es fill-bound (ms ≈ 2,1 + 6,4 x
 ## megapíxeles), así que medir en ventana chica subestima el costo. 1920x1080
@@ -22,7 +23,6 @@ extends SceneTree
 
 const FrameMetrics := preload("res://tools/measure/frame_metrics.gd")
 const OverdrawProbe := preload("res://tools/measure/overdraw_probe.gd")
-const GrassProbe := preload("res://tools/measure/grass_instancer_probe.gd")
 
 const DEFAULT_SCENE := "res://scenes/terrain_base.tscn"
 const WARMUP_FRAMES := 45
@@ -71,34 +71,29 @@ func _collect_lights(node: Node) -> void:
 	for child in node.get_children():
 		_collect_lights(child)
 
-## Reemplaza el GrassInstancer de producción por el probe ANTES de que la
-## escena entre al árbol: si se hiciera después, el _ready() del original ya
-## habría plantado sus instancias y estaríamos midiendo las dos capas.
-func _swap_grass_for_probe(root_node: Node) -> void:
-	var original := _find(
+## Pone el GrassInstancer de producción en modo opaco, ANTES de que la
+## escena entre al árbol: si se hiciera después, su _ready() ya habría
+## plantado las instancias con el material viejo.
+##
+## Antes esto reemplazaba el nodo por una subclase instrumental. Ya no hace
+## falta: TerrainGrassInstancer tiene material_mode propio, así que la
+## herramienta mide exactamente el código que se shipea, no un primo suyo.
+func _configure_grass(root_node: Node) -> void:
+	var grass := _find(
 		func(n): return n.name == "GrassInstancer" and n.get_script() != null,
 		root_node)
-	if original == null:
-		push_warning("scene_report: no hay GrassInstancer que reemplazar")
+	if grass == null:
+		push_warning("scene_report: no hay GrassInstancer que configurar")
 		return
-	var parent := original.get_parent()
-	var probe := Node3D.new()
-	probe.set_script(GrassProbe)
-	# Nombre distinto a propósito: el asset se registra como
-	# "TerrainGrassInstancer_<nombre de nodo>", así que "GrassProbe" no puede
-	# pisar la entrada real "TerrainGrassInstancer_GrassInstancer" de
-	# world_data/terrain/terrain_assets.tres ni siquiera en memoria.
-	probe.name = "GrassProbe"
-	probe.transform = original.transform
-	probe.copy_settings_from(original)
-	probe.material_mode = GrassProbe.MATERIAL_OPAQUE
+	var mode: String = _args.get("grass", "")
+	if mode == "opaque":
+		grass.material_mode = grass.MATERIAL_OPAQUE
+	elif mode == "alpha":
+		grass.material_mode = grass.MATERIAL_ATLAS_ALPHA
 	if _args.has("blade"):
-		probe.blade_asset_path = _args["blade"]
+		grass.blade_asset_path = _args["blade"]
 	if _args.has("count"):
-		probe.blade_count = int(_args["count"])
-	parent.remove_child(original)
-	original.queue_free()
-	parent.add_child(probe)
+		grass.blade_count = int(_args["count"])
 
 func _measure(label: String) -> Dictionary:
 	_metrics.reset()
@@ -124,17 +119,24 @@ func _main() -> void:
 		quit(1)
 		return
 	var world := packed.instantiate()
-	var grass_mode: String = _args.get("grass", "produccion")
-	if grass_mode == "opaque":
-		_swap_grass_for_probe(world)
+	var grass_mode: String = _args.get("grass", "escena")
+	_configure_grass(world)
 	root.add_child(world)
+
+	# --play: no mide nada, sólo deja la escena corriendo para jugarla. Es la
+	# única forma de VER el pasto opaco sin tocar código de producción --
+	# §17: un mecanismo no se valida porque los números den bien, se valida
+	# jugándolo.
+	if _args.has("play"):
+		print("modo --play: escena corriendo con pasto '%s'. Cerrar la ventana para salir." % grass_mode)
+		return
 
 	_metrics = FrameMetrics.new()
 	_metrics.start(root.get_viewport_rid())
 
 	_terrain = _find(func(n): return n.has_method("get_instancer"), root)
 	_grass = _find(
-		func(n): return n.get_script() != null and n.name in ["GrassInstancer", "GrassProbe"],
+		func(n): return n.get_script() != null and n.name == "GrassInstancer",
 		root)
 	_collect_lights(root)
 
@@ -217,6 +219,16 @@ func _report(scene_path: String, grass_mode: String, calibration: Dictionary,
 	print("\n-- presupuesto --")
 	print(_line("terreno", terrain, BUDGET["terreno"]))
 	print(_line("pasto", grass, BUDGET["pasto"]))
+	if grass < 0.0:
+		# No es un error de medicion. El pasto opaco se dibuja antes que el
+		# terreno (los opacos se ordenan de adelante hacia atras), asi que
+		# Early-Z descarta los pixeles de terreno que quedan detras y el caro
+		# shader de Terrain3DMaterial nunca corre ahi. Si tapa mas de lo que
+		# cuesta, el saldo da negativo: agregar pasto sale GRATIS y ademas
+		# ahorra. Con alfa el signo se invierte, porque sin Early-Z el terreno
+		# de atras se sombrea igual -- ese cambio de signo es la evidencia.
+		print("        (negativo y no es un bug: el pasto opaco ocluye terreno")
+		print("         mas caro del que cuesta. Ver README, seccion de oclusion.)")
 	print(_line("base (cielo/luz/player/UI)", base, BUDGET["base (cielo/luz/player/UI)"]))
 
 	var reserved_total := 0.0

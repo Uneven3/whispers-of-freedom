@@ -229,3 +229,45 @@ func test_toggling_visible_queues_a_rebuild():
 
 	inst.visible = false
 	assert_true(inst._rebuild_queued, "hiding the node must queue a rebuild so the grass actually disappears")
+
+
+## El shader del atlas usa tex.a como ALPHA. Una malla sin UV samplea en
+## (0,0), obtiene alfa 0 y se descarta entera: el pasto se dibuja invisible
+## sin un solo error en consola. Ya costó una sesión de mediciones falsas
+## (docs/presupuesto_render.md) y reapareció apenas alguien cambió
+## blade_asset_path desde el editor. Estos tests fijan el camino opaco y el
+## aviso, que es lo que evita que vuelva a pasar en silencio.
+##
+## Sí corre headless: elegir y construir un ShaderMaterial no necesita
+## rasterizar nada -- lo que no se puede headless es add_transforms(), ver
+## el comentario de cabecera de este archivo.
+func test_opaque_mode_builds_the_opaque_shader_not_the_atlas_one():
+	var inst := TerrainGrassInstancerScript.new()
+	add_child_autofree(inst)
+
+	inst.material_mode = TerrainGrassInstancerScript.MATERIAL_OPAQUE
+	var opaque: ShaderMaterial = inst._build_shader_material()
+	assert_eq(opaque.shader.resource_path, "res://scripts/world/grass_blade_opaque.gdshader",
+		"opaque mode must not fall back to the alpha_to_coverage shader")
+	assert_null(opaque.get_shader_parameter("card_texture"),
+		"the opaque path must not sample the atlas at all")
+
+	inst.material_mode = TerrainGrassInstancerScript.MATERIAL_ATLAS_ALPHA
+	var alpha: ShaderMaterial = inst._build_shader_material()
+	assert_eq(alpha.shader.resource_path, "res://scripts/world/grass_blade.gdshader",
+		"alpha mode must keep using the atlas shader")
+
+
+## grass_blade_single perdió sus UV a propósito en la vigésima sesión. Si esa
+## afirmación deja de ser cierta, el aviso de _warn_if_alpha_mode_on_uvless_mesh
+## deja de tener sentido y este test avisa primero.
+func test_the_single_blade_mesh_really_has_no_uvs():
+	var inst := TerrainGrassInstancerScript.new()
+	add_child_autofree(inst)
+
+	var packed: PackedScene = load("res://art/blender/grass/grass_blade_single.blend")
+	assert_not_null(packed, "grass_blade_single.blend must import (needs Blender Path configured)")
+	var mesh: Mesh = inst._first_mesh_of(packed)
+	assert_not_null(mesh, "the .blend must contain a MeshInstance3D with a mesh")
+	assert_eq(mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV, 0,
+		"single blade must stay UV-less -- if this fails, the atlas-alpha warning is now wrong")

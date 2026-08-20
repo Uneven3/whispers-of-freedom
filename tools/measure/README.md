@@ -27,14 +27,27 @@ Argumentos, después de `--`:
 | argumento | qué hace |
 |---|---|
 | `--scene=res://...` | escena a medir (default `scenes/terrain_base.tscn`) |
-| `--grass=opaque` | reemplaza el `GrassInstancer` por el probe de material opaco |
+| `--grass=opaque` / `--grass=alpha` | fuerza el `material_mode` del `GrassInstancer` |
 | `--blade=res://...` | malla de pasto a usar en modo opaco |
 | `--count=N` | cantidad de instancias en modo opaco |
 | `--png=/ruta` | dónde guardar la captura de overdraw |
+| `--play` | no mide nada: deja la escena corriendo para jugarla |
 
 **La resolución no es opcional.** La escena es fill-bound
 (`ms ≈ 2,1 + 6,4 × megapíxeles`), así que medir en ventana chica subestima el
 costo. 1920×1080 es la resolución objetivo declarada en el presupuesto.
+
+## Jugar una variante en vez de medirla
+
+```
+godot --path . --resolution 1920x1080 -s tools/measure/scene_report.gd -- --play --grass=opaque --blade=res://art/blender/grass/grass_blade_single.blend
+```
+
+`--play` salta todas las fases de medición y deja la escena corriendo, con
+el pasto reemplazado. Es la única forma de **ver** una variante sin tocar
+código de producción — y §17 de `ARCHITECTURE.md` pide exactamente eso antes
+de dar algo por bueno: un mecanismo no se valida porque los números den
+bien, se valida jugándolo.
 
 ## Los archivos
 
@@ -43,8 +56,9 @@ costo. 1920×1080 es la resolución objetivo declarada en el presupuesto.
 | `scene_report.gd` | el comando único. Reemplazó a `tools/render_budget_probe.gd` |
 | `frame_metrics.gd` | muestreo por frame + estadística (mediana, p95) |
 | `overdraw_probe.gd` | cuantificación de overdraw |
-| `grass_instancer_probe.gd` | variante del instancer que planta pasto opaco |
-| `grass_opaque_probe.gdshader` | shader opaco, sin atlas ni alfa |
+(El pasto opaco dejó de necesitar una copia instrumental: `TerrainGrassInstancer`
+tiene `material_mode` propio, así que la herramienta mide exactamente el código
+que se shipea.)
 
 ## Qué mide y qué NO mide
 
@@ -68,6 +82,34 @@ alrededor de las 25 capas**, y por encima de ese techo el motor no distingue
 no es ~0, el promedio y el máximo son **cotas inferiores**, no la medición.
 En el pasto con alfa de producción, el 10% de la pantalla satura — o sea que
 ahí el número real de capas es desconocido y mayor que el reportado.
+
+## Un costo negativo no es un bug: es oclusión
+
+Medido en esta sesión: con pasto **opaco**, el costo del pasto sale
+**negativo** (−1,34 ms a 1080p). La escena con pasto cuesta menos que la
+misma escena sin pasto.
+
+No es error de medición. Los objetos opacos se ordenan de adelante hacia
+atrás, así que el pasto se dibuja antes que el terreno y Early-Z descarta
+los fragmentos de terreno que quedan detrás — el caro shader de
+`Terrain3DMaterial` nunca corre en esos píxeles. Como el terreno cuesta
+~8,6 ms y el pasto tapa buena parte de la mitad inferior de la pantalla,
+tapar sale más barato que dibujar.
+
+La evidencia de que es eso y no un artefacto es **el cambio de signo**: con
+el mismo pasto en modo alfa el costo es +5,01 ms, porque sin Early-Z el
+terreno de atrás se sombrea igual. Opaco tapa; alfa no.
+
+Consecuencia práctica: el pasto opaco no compite contra el presupuesto del
+terreno, lo *alivia*.
+
+## Cerrá el editor de Godot antes de medir
+
+El editor renderiza su propio viewport 3D y compite por la misma GPU: con el
+editor abierto los números son basura, y no de forma obvia. Pasó en esta
+sesión — un barrido dio un costo de pasto NEGATIVO, que fue la pista.
+
+`pgrep -af "godot.*--editor"` te dice si hay uno corriendo.
 
 ## Contaminaciones que la herramienta ya evita
 
