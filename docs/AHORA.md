@@ -357,6 +357,54 @@ buscando una entrada existente por nombre (`mesh_name`) antes de decidir el
 agrega. Verificado corriendo el reimport 3 veces seguidas: se mantiene en 2
 entradas (`New Mesh` + la nuestra), estable/idéntico byte a byte.
 
+## Presupuesto de render decidido, 2026-08-20 — ver `docs/presupuesto_render.md`
+
+Se dejó de medir para comparar y se pasó a medir contra un presupuesto.
+Decisiones tomadas por el usuario: **piso de hardware = esta máquina
+(Radeon Polaris 11, clase RX 460/560 de 2016), 1920x1080, 60 fps → sobre
+de 16,67 ms por frame**, pasto denso por zonas con el presupuesto fijado
+contra la peor zona. El reparto completo, las conversiones medidas y las
+advertencias están en `docs/presupuesto_render.md`; se verifica con
+`godot --path . --resolution 1920x1080 -s tools/render_budget_probe.gd`
+(necesita pantalla real, no headless).
+
+**Cambio de unidad, y por qué importa**: todo lo anterior estaba medido en
+FPS y primitivos, que no se reparten en tajadas (los FPS no se suman ni
+son lineales). Además el vsync clava a 60 acá, así que por debajo del
+techo el FPS no informa nada. Ahora se mide en GPU ms reales
+(`RenderingServer.viewport_get_measured_render_time_gpu()`, confirmado
+que funciona en 4.7.2 Forward+/Vulkan y devuelve valores reales con
+pantalla).
+
+**Hallazgos que reordenan las prioridades:**
+
+- **La escena es fill-bound, confirmado**: `ms ≈ 2,1 + 6,4 × megapíxeles`,
+  con menos de 1% de error en tres resoluciones. Bajar triángulos no es
+  la palanca — coincide con que las sesiones 17-18 midieran escalado
+  perfecto de triángulos sin la mejora correspondiente.
+- **El terreno es la tajada más grande, no el pasto**: a 1080p, terreno
+  9,04 ms / pasto 5,06 ms / base 1,23 ms = 15,33 ms, o sea 92% del sobre
+  de 60 fps **con una escena sin enemigos, sin animación de personaje,
+  sin VFX de combate y sin post-procesado**. El punto 7 de abajo deja de
+  ser curiosidad y pasa a bloquear todo lo demás. Hipótesis a verificar:
+  el costo está en el shader por píxel de `Terrain3DMaterial` (macro
+  variation, projection/triplanar, depth blur, noise, todo en default),
+  no en el clipmap ni en los LOD de malla, porque ya sabemos que no
+  somos vertex-bound.
+- **El alfa cuesta 15x con geometría idéntica**: la misma mata, mismos
+  vértices, mismas instancias, a 16000 — 26,46 ms con el shader de atlas
+  contra 1,78 ms con material opaco unshaded. Y la opaca cubre *más*
+  píxeles (724k vs 708k), porque no recorta nada. Es la confirmación
+  empírica y en milisegundos de lo que la sesión 21 había concluido
+  leyendo a BOTW y a `breath-of-freedom`.
+- **Bug que ensucia mediciones viejas**: `grass_blade_single` renderizado
+  con `grass_blade.gdshader` **no dibuja absolutamente nada** — 0 píxeles
+  cubiertos, medido. La malla no tiene UV (se le sacó a propósito en la
+  sesión 20), así que samplea el atlas en (0,0), alfa 0, y descarta todo.
+  Toda comparación "brizna vs mata" hecha con ese shader estaba midiendo
+  una brizna invisible contra una mata visible. Afecta a partes de las
+  sesiones 17-19. La brizna sólo se mide bien con material opaco.
+
 ## Próximo foco (propuesto, no comprometido)
 
 1. **Seguir modificando terreno y probando Terrain3D** (explícito, siguiente
