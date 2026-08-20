@@ -259,6 +259,66 @@ con todas sus features en default (macro variation, projection/triplanar,
 depth blur, dual scaling, noise). Verificable apagándolas de a una y
 midiendo ms. No hecho todavía.
 
+## Cuánto cuesta cada cosa que todavía no existe
+
+Medido 2026-08-20 sobre `terrain_base.tscn` con el pasto opaco ya puesto
+(base 8,52 ms), a 1920×1080, encendiendo **una cosa por vez** y apagándola
+antes de la siguiente, para que cada delta sea atribuible.
+
+| agregado | GPU ms | delta | veredicto |
+|---|---|---|---|
+| base (escena actual) | 8,52 | — | |
+| niebla de profundidad | 8,64 | **+0,12** | prácticamente gratis |
+| niebla volumétrica | 9,64 | **+1,11** | asequible, y no depende de la densidad |
+| 1 luz omni con sombras | 9,51 | **+0,99** | cada luz con sombras agrega su propio pase |
+| 1 luz omni sin sombras | 9,27 | +0,75 | la sombra es sólo 0,24 de eso |
+| glow | 11,01 | **+2,48** | caro para lo que aporta |
+| SSAO | 15,49 | **+6,97** | inviable: se come el 42% del sobre |
+| reflejos en espacio de pantalla | 16,69 | **+8,17** | inviable: solo, ya no entra en 60 fps |
+
+Dos cosas que salen de acá:
+
+**La niebla volumétrica cuesta lo mismo con cualquier densidad** (+1,11 vs
++1,12 al subir a `density = 0.01`). Es costo fijo por frame: una grilla de
+froxels que se computa entera independientemente de lo que haya en la
+escena. O sea que se paga o no se paga, no se "dosifica".
+
+**SSAO y SSR están fuera de discusión en este hardware.** Cualquiera de los
+dos solo cuesta más que todo el resto de la escena junta. Si en algún
+momento se quiere oclusión ambiental, tiene que venir horneada o del
+gradiente del propio shader, no de un pase de pantalla.
+
+**Partículas: NO MEDIDO.** El intento falló y se deja anotado en vez de
+reportar el número: `visible_objetos` se quedó en 88 con 500, 2000 y 8000
+partículas, o sea que nunca entraron al conjunto visible (se ubicaron
+respecto de una cámara que reportaba posición (0,0,0)). El +0,03 ms que dio
+significa "no se dibujó nada". Lo que sí se sabe por teoría y por lo ya
+medido con el pasto: las partículas son transparentes y aditivas, así que
+**no tienen Early-Z** — su costo va a escalar con píxeles cubiertos por
+capas superpuestas, no con la cantidad de partículas. Es exactamente el
+mismo régimen que hizo que el pasto con alfa costara 18-25x. Medir con la
+cámara real antes de presupuestarlas.
+
+## Flores, arbustos y árboles: ya están medidos, indirectamente
+
+Son el mismo problema que el pasto, y la respuesta ya la tenemos:
+
+- **Flores y arbustos** son capa densa: van opacos, geometría instanciada,
+  color por gradiente de vértice. En ese régimen el costo marginal *baja*
+  con la densidad (Early-Z rechaza lo tapado) y encima **ocluyen el terreno
+  caro**, igual que el pasto opaco, que mide costo negativo.
+- **Árboles** son el caso donde el alfa sí se justifica, pero por una razón
+  de cantidad, no de técnica: con cientos de instancias en vez de miles, N
+  nunca crece lo suficiente para que perder Early-Z duela. Lo que sí van a
+  costar es el **pase de sombras**, que hoy ya vale 1,45 ms con sólo terreno
+  y pasto.
+
+La regla operativa que sale de todo esto, y que conviene aplicar antes de
+agregar cualquier cosa nueva: **¿esto es opaco o transparente?** Si es
+opaco, es casi gratis y probablemente ayude. Si es transparente y va a
+haber muchos superpuestos, es la categoría que ya nos costó el presupuesto
+una vez.
+
 ## Cómo se verifica
 
 `tools/measure/scene_report.gd` mide y compara contra este documento:
