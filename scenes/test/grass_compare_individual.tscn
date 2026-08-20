@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://cqk8n2x5jv003"]
+
+[ext_resource type="Script" path="res://scripts/world/grass_probe_field.gd" id="grass_probe_field"]
+
+[sub_resource type="Environment" id="Environment_env"]
+background_mode = 1
+background_color = Color(0, 0, 0, 1)
+ambient_light_source = 1
+tonemap_mode = 2
+
+[node name="GrassCompareIndividual" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_env")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.980581, 0.196116, 0, -0.196116, 0.980581, 0, 1.6, 8)
+current = true
+
+[node name="GrassField" type="Node3D" parent="."]
+script = ExtResource("grass_probe_field")
+mesh_path = "res://art/blender/grass/grass_blade_single.blend"
+flat_material = true
+blade_count = 3000
+field_radius = 6.0
