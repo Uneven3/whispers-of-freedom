@@ -8,6 +8,23 @@ técnicas — para el historial de cómo se llegó acá ver
 Regla de uso: cuando algo no entra, **se recorta contenido, no se sube el
 presupuesto**. Si el presupuesto se sube, se sube acá, con fecha y motivo.
 
+## Estado, al 2026-08-20
+
+`terrain_base.tscn` a 1080p60: **8,53 ms de 16,67**, con 4,64 ms de
+contingencia después de reservar personajes y VFX. **Entra**, y sin bajar
+resolución ni framerate. Lo que lo resolvió fue cambiar la técnica del
+pasto a opaco, no recortar densidad ni distancia.
+
+Sin medir todavía, y son las dos preguntas abiertas del presupuesto:
+
+- **El agua opaca con reflejo estilizado** — el shader existe
+  (`scripts/world/water_stylized.gdshader`) pero vive en
+  `terrain_valley.tscn`, que no renderiza.
+- **El escenario del valle completo** (terreno + pasto + lago + río), que
+  iba a ser el primer caso peor real. Sus dos temporizadores fallan: el de
+  GPU devuelve un valor congelado y el reloj de pared se clava en un cap de
+  145 fps. **Ningún número del valle debe citarse hasta resolverlo.**
+
 ## El sobre
 
 | decisión | valor | quién decidió |
@@ -41,15 +58,15 @@ un frame con muchos VFX) para que no se vean como tirones. La
 recomendación estándar es mantener la carga típica cómodamente por debajo
 del 70-80% del sobre.
 
-| sistema | asignado | medido hoy | qué falta |
+| sistema | asignado | medido 2026-08-20 | estado |
 |---|---|---|---|
-| terreno Terrain3D (incl. sombra recibida) | 4,5 ms | **9,04 ms** | bajar 2,0x |
-| pasto, peor zona | 3,0 ms | **5,06 ms** | bajar 1,7x |
+| terreno Terrain3D (incl. sombra recibida) | 4,5 ms | **8,6 ms** | **sobre**, bajar ~1,9x |
+| pasto, peor zona | 3,0 ms | **−1,3 ms** | bajo presupuesto, y **negativo**: ocluye terreno más caro del que cuesta |
 | personajes + enemigos + sus sombras | 2,5 ms | ~0,2 ms | no existe todavía (cápsulas graybox, sin animación) |
-| VFX de combate | 1,0 ms | 0 ms | no existe todavía |
-| cielo + luz + post + UI | 1,3 ms | ~1,0 ms | dentro de presupuesto |
-| **subtotal trabajo** | **12,3 ms** | **15,33 ms** | |
-| contingencia | 4,37 ms | — | |
+| VFX de combate | 1,0 ms | 0,04 ms | la estela del golpe existe y es despreciable |
+| cielo + luz + post + UI | 1,3 ms | ~1,2 ms | dentro |
+| **subtotal trabajo** | **12,3 ms** | **8,53 ms** | |
+| contingencia | 4,37 ms | 8,14 ms | |
 | **total** | **16,67 ms** | | |
 
 Los sistemas que todavía no existen tienen casillero asignado **a
@@ -57,15 +74,20 @@ propósito**: es la diferencia entre un presupuesto y una medición. Si no
 se reservan ahora, aparecen después como "sorpresa" y el presupuesto se
 descubre roto cuando ya es caro arreglarlo.
 
-## Estado: el presupuesto está excedido hoy
+## Estado: entra, pero el terreno sigue sobre su asignación
 
-15,33 ms medidos contra 12,3 asignados, **con una escena que no tiene
-enemigos, ni animación de personaje, ni VFX de combate, ni
-post-procesado**. Sobran 1,34 ms sobre el sobre de 60 fps para todo el
-juego que falta construir.
+Con el pasto opaco adoptado, la escena completa mide **8,53 ms contra un
+sobre de 16,67**, y proyectando lo reservado para personajes y VFX queda en
+12,03 ms — dentro, con 4,64 ms de contingencia.
 
-El pasto **no** es el problema principal: borrándolo entero quedan 10,3 ms
-de terreno + base, que ya es el 62% del sobre.
+Esto cambió el 2026-08-20 y no por recortar contenido: la versión con pasto
+de alfa medía 14,90 ms y proyectaba 18,38, o sea excedida. **Lo único que
+cambió fue la técnica del pasto.**
+
+Lo que queda fuera de lugar es el **terreno, en 8,6 ms contra 4,5
+asignados** — casi todo el gasto real del frame. Es el único sistema que
+hoy está sobre su tajada, y la holgura que tenemos es prestada de los
+casilleros que todavía nadie usó.
 
 ## Conversiones medidas (Polaris 11 @ 1920×1080)
 
@@ -288,48 +310,33 @@ dos solo cuesta más que todo el resto de la escena junta. Si en algún
 momento se quiere oclusión ambiental, tiene que venir horneada o del
 gradiente del propio shader, no de un pase de pantalla.
 
-**Partículas: NO MEDIDO.** El intento falló y se deja anotado en vez de
-reportar el número: `visible_objetos` se quedó en 88 con 500, 2000 y 8000
-partículas, o sea que nunca entraron al conjunto visible (se ubicaron
-respecto de una cámara que reportaba posición (0,0,0)). El +0,03 ms que dio
-significa "no se dibujó nada". Lo que sí se sabe por teoría y por lo ya
-medido con el pasto: las partículas son transparentes y aditivas, así que
-**no tienen Early-Z** — su costo va a escalar con píxeles cubiertos por
-capas superpuestas, no con la cantidad de partículas. Es exactamente el
-mismo régimen que hizo que el pasto con alfa costara 18-25x. Medir con la
-cámara real antes de presupuestarlas.
+**Partículas: medidas, y el resultado corrige una preocupación vieja.** El
+VFX de estela del golpe (`visuals_pivot.gd`, `CPUParticles3D`, 15 esferas
+alfa) estaba anotado como "muy mal optimizado" porque su `SphereMesh` venía
+en 64x32 por defecto: ~63000 triángulos por golpe. Medido en milisegundos,
+re-disparándolo durante toda la ventana de muestreo:
 
-## Agua
-
-Medido 2026-08-20 con un plano de 200×200 m subdividido 100×100, sobre la
-escena real, a 1920×1080.
-
-**Advertencia sobre estos números**: el plano quedó por encima del terreno y
-**tapa la escena entera**, así que el delta contra la base (el agua opaca da
-−3,59 ms) no significa "el agua es barata" — significa que el agua reemplazó
-lo que había detrás. Ese número no se debe citar. Lo que sí vale es la
-comparación **entre las tres variantes**, que cubren exactamente la misma
-superficie:
-
-| agua, misma superficie | GPU ms | contra opaca |
+| | GPU ms | primitivas |
 |---|---|---|
-| opaca | 4,95 | — |
-| transparente | 9,78 | **+4,83 (1,98x)** |
-| transparente + refracción | 11,20 | **+6,25 (2,26x)** |
+| VFX apagado | 8,53 | 254 412 |
+| VFX 6x3 (arreglado) | 8,55 | 255 132 |
+| VFX 64x32 (como estaba) | 8,57 | 317 772 |
 
-El mismo patrón de siempre: la transparencia duplica el costo, y la
-refracción encima fuerza una copia de la pantalla por frame.
+**62 640 triángulos cuestan 0,027 ms**, y el efecto entero sin arreglar
+costaba 0,040 ms. Nunca fue un problema de rendimiento: la preocupación
+venía de contar triángulos. El arreglo quedó igual porque saca desperdicio
+evidente, no porque haya comprado nada.
 
-Consecuencia de diseño: **el agua es el peor caso del proyecto**, porque a
-diferencia del pasto no se puede ralear ni alejar — un lago cubre lo que
-cubre, y si el jugador lo mira de frente ocupa media pantalla. Si va a haber
-agua transparente, tiene que entrar al presupuesto como una tajada propia
-antes de construirla, no después. Un río angosto y un lago que llena el
-horizonte son dos presupuestos distintos.
+Dos trampas que hubo que sortear para que esa medición valiera, ambas
+anotadas en `tools/measure/README.md`: `emitting = true` no re-emite un
+`one_shot` ya terminado (hace falta `restart()`), y un efecto que dura ~11
+frames medido con una ventana de 90 mide 79 frames de nada.
 
-Todavía sin medir: agua opaca con reflejo estilizado (sin refracción ni
-copia de pantalla), que es la que usa la mayoría de los juegos con esta
-dirección de arte y probablemente sea la respuesta correcta acá.
+Lo que sigue valiendo de la teoría: las partículas son transparentes y sin
+Early-Z, así que su costo escala con píxeles cubiertos por capas
+superpuestas. Este VFX sale gratis porque **cubre muy poca pantalla**, no
+porque las partículas sean baratas. Un efecto a pantalla completa es otra
+categoría.
 
 ## Flores, arbustos y árboles: ya están medidos, indirectamente
 
