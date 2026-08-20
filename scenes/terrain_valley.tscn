@@ -1,0 +1,99 @@
+[gd_scene format=3 uid="uid://cvalley0scene1"]
+
+; Escenario "valle": meseta alta al norte con un lago, y un rio grande
+; bajando hasta la parte baja al sur. El terreno lo genera
+; tools/worldgen/generate_valley.gd -- no se esculpe a mano.
+;
+; NO comparte NADA con terrain_base.tscn salvo el player. En particular
+; tiene su propio data_directory Y su propio Terrain3DAssets: son dos
+; propiedades independientes, y reusar el terrain_assets.tres del terreno
+; esculpido dejaria que el @tool del instancer de pasto lo mute en memoria
+; con solo abrir esta escena en el editor, y que un `--editor --import`
+; posterior hornee esa mutacion en un archivo versionado.
+
+[ext_resource type="Script" uid="uid://djl4pjc3xqbff" path="res://scripts/world/grass_terrain_instancer.gd" id="grass_terrain_instancer"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="player_scene"]
+[ext_resource type="Terrain3DAssets" path="res://world_data/terrain_valley/valley_assets.tres" id="valley_assets"]
+[ext_resource type="ArrayMesh" path="res://world_data/terrain_valley/lake_mesh.res" id="lake_mesh"]
+[ext_resource type="ArrayMesh" path="res://world_data/terrain_valley/river_mesh.res" id="river_mesh"]
+[ext_resource type="Shader" path="res://scripts/world/water_stylized.gdshader" id="water_shader"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+
+[sub_resource type="Sky" id="Sky_sky"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_env"]
+background_mode = 2
+sky = SubResource("Sky_sky")
+tonemap_mode = 2
+
+[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_valley"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
+render_priority = 0
+shader = ExtResource("water_shader")
+shader_parameter/shallow_color = Color(0.29, 0.61, 0.62, 1)
+shader_parameter/deep_color = Color(0.06, 0.2, 0.31, 1)
+shader_parameter/foam_color = Color(0.85, 0.94, 0.96, 1)
+shader_parameter/roughness_value = 0.06
+shader_parameter/metallic_value = 0.35
+shader_parameter/shore_band = 0.22
+shader_parameter/foam_band = 0.07
+shader_parameter/foam_speed = 0.6
+shader_parameter/foam_scale = 26.0
+shader_parameter/wave_speed = 0.35
+shader_parameter/wave_scale = 5.0
+shader_parameter/wave_strength = 0.22
+shader_parameter/flow_speed = 0.25
+
+[node name="TerrainValley" type="Node3D"]
+
+[node name="Terrain3D" type="Terrain3D" parent="." groups=["terrain"]]
+data_directory = "res://world_data/terrain_valley"
+material = SubResource("Terrain3DMaterial_valley")
+assets = ExtResource("valley_assets")
+top_level = true
+
+[node name="Water" type="Node3D" parent="."]
+
+[node name="Lake" type="MeshInstance3D" parent="Water"]
+mesh = ExtResource("lake_mesh")
+material_override = SubResource("ShaderMaterial_water")
+
+[node name="River" type="MeshInstance3D" parent="Water"]
+mesh = ExtResource("river_mesh")
+material_override = SubResource("ShaderMaterial_water")
+
+; Junto a la orilla sur del lago, mirando al nacimiento del rio: es el peor
+; caso de la escena (agua + pasto + la bajada entera del valle en cuadro).
+[node name="Player" parent="." instance=ExtResource("player_scene")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 145, 320)
+
+[node name="GrassInstancer" type="Node3D" parent="."]
+script = ExtResource("grass_terrain_instancer")
+terrain_path = NodePath("../Terrain3D")
+blade_asset_path = "uid://drjg4oyvdh8jv"
+material_mode = 1
+card_texture_path = "uid://bq5hw4reh26yo"
+blade_count = 16000
+field_radius = 60.0
+clump_count = 3000
+clump_spread = 1.5
+min_scale = 0.8
+max_scale = 1.2
+blade_color = Color(0.26666668, 0.35686275, 0.02745098, 1)
+tip_color = Color(0.15294118, 0.27058825, 0.050980393, 1)
+wind_speed = 1.6
+wind_strength = 0.35
+sway_frequency = 2.2
+sway_amplitude = 0.06
+base_fade_height = 0.2
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 0, 320)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0, 200, 0)
+shadow_enabled = true
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_env")

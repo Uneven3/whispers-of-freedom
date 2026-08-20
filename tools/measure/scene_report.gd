@@ -95,8 +95,39 @@ func _configure_grass(root_node: Node) -> void:
 	if _args.has("count"):
 		grass.blade_count = int(_args["count"])
 
+## Espera a que el motor termine de compilar pipelines antes de medir.
+##
+## Un shader nuevo se compila la primera vez que se dibuja, y eso estanca el
+## frame -- medido: la escena del valle daba 2 fps y 581 ms de CPU en la
+## primera fase, y 101 fps apenas terminaba de compilar. Un warmup de N
+## frames fijo no alcanza, porque no se sabe cuantos frames tarda. Hay que
+## esperar a que el contador deje de subir.
+func _await_pipelines_settled() -> void:
+	var last := -1
+	var stable := 0
+	var waited := 0
+	while stable < 30 and waited < 900:
+		await process_frame
+		waited += 1
+		var now := 0
+		for monitor in [Performance.PIPELINE_COMPILATIONS_CANVAS,
+				Performance.PIPELINE_COMPILATIONS_MESH,
+				Performance.PIPELINE_COMPILATIONS_SURFACE,
+				Performance.PIPELINE_COMPILATIONS_DRAW,
+				Performance.PIPELINE_COMPILATIONS_SPECIALIZATION]:
+			now += int(Performance.get_monitor(monitor))
+		if now == last:
+			stable += 1
+		else:
+			stable = 0
+			last = now
+	if waited >= 900:
+		push_warning("scene_report: los pipelines nunca se estabilizaron; la medicion puede incluir picos de compilacion")
+
+
 func _measure(label: String) -> Dictionary:
 	_metrics.reset()
+	await _await_pipelines_settled()
 	for i in WARMUP_FRAMES:
 		await process_frame
 	for i in SAMPLE_FRAMES:

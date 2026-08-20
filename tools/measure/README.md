@@ -103,6 +103,22 @@ terreno de atrás se sombrea igual. Opaco tapa; alfa no.
 Consecuencia práctica: el pasto opaco no compite contra el presupuesto del
 terreno, lo *alivia*.
 
+## Compilación de pipelines: el pico que arruina la primera fase
+
+Un shader se compila la primera vez que se dibuja, y eso estanca el frame.
+Medido: la escena del valle daba **2 fps y 581 ms de CPU** en la primera
+fase de medición, y 101 fps apenas terminaba de compilar. Un warmup de N
+frames fijo no alcanza — no se sabe de antemano cuántos frames tarda.
+
+`scene_report.gd` ahora espera a que los contadores
+`Performance.PIPELINE_COMPILATIONS_*` dejen de subir durante 30 frames
+seguidos antes de empezar a muestrear, y avisa si nunca se estabilizan.
+
+Síntoma para reconocerlo si aparece de otra forma: el temporizador de GPU
+deja de moverse entre fases (mediana = p95 = max, idénticos) mientras los
+FPS cambian muchísimo. Cuando eso pasa, no es que el costo sea igual — es
+que el frame está estancado en otra cosa y el temporizador no la ve.
+
 ## Cerrá el editor de Godot antes de medir
 
 El editor renderiza su propio viewport 3D y compite por la misma GPU: con el

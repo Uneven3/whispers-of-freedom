@@ -64,6 +64,20 @@ func _setup_swing_vfx() -> void:
 	var sphere_mesh := SphereMesh.new()
 	sphere_mesh.radius = 0.08
 	sphere_mesh.height = 0.16
+	# SphereMesh viene por defecto en 64 segmentos x 32 anillos = 4224
+	# triangulos. A radio 0,08 esto ocupa unos pocos pixeles en pantalla, asi
+	# que esa tesela es invisible: 15 particulas x 4224 eran ~63000 triangulos
+	# por golpe. Con 6x3 son 48, o sea ~720.
+	#
+	# OJO CON LO QUE ESTE ARREGLO NO ARREGLA: la escena es fill-bound, no
+	# vertex-bound (docs/presupuesto_render.md), y este material es
+	# TRANSPARENCY_ALPHA, o sea sin Early-Z. Su costo real vive en el
+	# overdraw de esferas superpuestas, no en los triangulos. Esto saca
+	# desperdicio evidente, no es la palanca de rendimiento -- medido, el
+	# delta de GPU ms es despreciable. Si alguna vez hay que abaratarlo de
+	# verdad, las variables son amount, el radio, y recuperar Early-Z.
+	sphere_mesh.radial_segments = 6
+	sphere_mesh.rings = 3
 	
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
