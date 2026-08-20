@@ -1848,3 +1848,518 @@ haga falta).
 sospechoso principal para una futura sesión si hace falta seguir
 optimizando. El swing trail VFX sigue anotado en `docs/AHORA.md` sin
 tocar.
+
+## Actualización 2026-08-19 (decimonovena sesión, RETRACTADA — ver vigésima sesión): FPS real, brizna individual vs. mata billboard, a la misma densidad de instancias
+
+**Retractada.** El usuario había pedido explícitamente NO usar Terrain3D
+para esta comparación, y una medición de densidad de píxeles de silueta
+(como `tools/grass_density_probe.gd`, ya borrada en ese momento del
+proyecto pero documentada en `docs/AHORA.md`) — esta sesión ignoró ambas
+cosas y midió FPS con 2 escenas reales de Terrain3D en su lugar. Además,
+el UV que se le agregó a `grass_blade_single` para esta prueba (mapeado a
+la columna 0 del atlas de la mata) rompió su silueta reconocible en V: esa
+columna del atlas está pintada para un rectángulo (las tarjetas de la
+mata), no para el rombo real de la malla de la brizna individual, así que
+la punta de la malla caía en una zona del atlas sin relación con su forma.
+Los cambios de esta sesión (UV nuevo en `place_leaf`/
+`generate_grass_blade_single.py`, las 2 escenas `scenes/test/grass_perf_*`)
+se revirtieron por completo. La tabla de FPS de abajo queda como registro
+de lo que se hizo y por qué estaba mal — no se debe volver a citar como
+hallazgo válido. Ver la vigésima sesión para la comparación correcta.
+
+El usuario corrigió el enfoque de la sesión anterior: medir primitivos con
+un material de depuración no contesta "qué pasto rinde mejor" — falta el
+costo real de shading/overdraw del shader de verdad, y falta comparar
+`grass_blade_single` (brizna individual cruzada, técnica clásica,
+remanente del sistema procedural previo al pivote) contra
+`grass_billboard_clump` (la mata de 4 tarjetas actual) con FPS real, a
+igual densidad, subiendo la densidad. Pidió 2 escenas nuevas dedicadas.
+De nuevo `/iterate-safely`.
+
+**Paso 0 — por qué no se podía medir esto directo**: `grass_blade_single`
+no tiene UV (confirmado leyendo `generate_grass_blade_single.py`), y el
+texel (0,0) del atlas es transparente (sesión 17) — bajo el shader real
+(`alpha_to_coverage`) hubiera quedado invisible, no "más barata por menos
+geometría". Se le agregó UV real:
+
+- `tools/blender/grass_blade_common.py`: `place_leaf()` ganó parámetros
+  opcionales `uv_column`/`uv_columns_total` (default `None` = sin capa UV,
+  cero cambio de comportamiento para `generate_grass_blade_tuft.py` y
+  `generate_grass_blade_flat.py`, que siguen llamándolo sin esos
+  argumentos — confirmado por el subagente de crítica antes de tocar
+  nada). Mapea el rombo de la hoja (tip/waist_l/waist_r/base) a una
+  columna del atlas, misma convención base=UV.y 0.0/tip=UV.y 1.0 que
+  `place_card_quad`.
+- `tools/blender/generate_grass_blade_single.py`: las 2 hojas cruzadas
+  ahora samplean la columna 0 del mismo `grass_card_atlas.png` real que
+  usa la mata actual — mismo bind de textura, mismo shader, mismo costo
+  de material; la única variable que cambia entre las 2 mallas comparadas
+  es la geometría. Verificado con PIL contra el atlas real antes de
+  confiar en el mapeo: 30.3% de cobertura opaca muestreada (vs. 17.5% del
+  mapeo rectangular real de la mata) — no cae en zona transparente.
+- Regenerado con `blender --background --factory-startup --python
+  tools/blender/generate_grass_blade_single.py`, reimportado con
+  `godot --headless --editor --import` (sin efectos colaterales esta vez:
+  `git status` idéntico antes/después, solo se reimportó el `.blend`
+  tocado).
+
+**Paso 1 — 2 escenas nuevas**, copias de `scenes/terrain_base.tscn`:
+`scenes/test/grass_perf_billboard.tscn` y
+`scenes/test/grass_perf_individual.tscn`. Mismo `Terrain3D`
+(`data_directory`/`assets` reales), mismo `field_radius=20.0,
+clump_count=2000, clump_spread=1.0, min_scale=0.8, max_scale=1.2` y mismos
+colores — solo cambia `blade_asset_path` (`uid://pfshnnd1ya50` mata /
+`uid://drjg4oyvdh8jv` brizna) y el nombre del nodo `GrassInstancer`
+(`GrassInstancerBillboard`/`GrassInstancerIndividual`, distinto a
+propósito).
+
+Dos correcciones que encontró el subagente de crítica antes de ejecutar,
+ambas incorporadas:
+
+1. **Sacar el nodo `Player` (se reemplazó por un `Camera3D` estático
+   simple) rompía la única llamada del proyecto a
+   `Terrain3D.set_camera()`** (`spawn_snap.gd:90-92` es la única, según
+   grep). Sin esa llamada, el LOD nativo de Terrain3D no sabe contra qué
+   cámara medir distancia — invalidaría el piso de costo ya medido en
+   sesiones anteriores. Se agregó la llamada a mano en el script de
+   medición, sobre el `Camera3D` de cada escena, apenas queda listo.
+2. **Nombrar distinto el nodo `GrassInstancer` en cada escena era
+   necesario, no cosmético**: `_register_mesh_asset()` deriva el nombre
+   del asset registrado del nombre del nodo, y las 2 escenas comparten el
+   mismo `Terrain3DAssets` (`terrain_assets.tres`) cacheado en memoria
+   dentro de un mismo proceso — con el mismo nombre de nodo, la segunda
+   escena hubiera pisado el asset de la primera por una rama de código
+   (`existing_id != -1` → `set_id()` + sobreescritura) que ninguna sesión
+   anterior había ejercitado nunca.
+
+Se anotó también, sin cambiar el script: a igual `blade_count` cada
+instancia de la mata billboard ya contiene 4 tarjetas contra 2 planos
+cruzados de la brizna individual — el barrido compara "a igual número de
+instancias colocadas", no "a igual cobertura visual de piso". No se
+intentó ajustar automáticamente `blade_count` para igualar cobertura
+visual (juzgado demasiado frágil/subjetivo de calcular bien).
+
+**Metodología de medición**: script `extends SceneTree` (sin
+`--headless`), carga una escena, mide, la libera (`queue_free()` +
+espera hasta que los primitivos caigan a 0, confirmado en el log — no se
+había verificado antes que liberar una escena completa con su propio
+`Terrain3D` de verdad soltara todo, otro riesgo real que marcó la
+crítica), carga la otra — nunca las 2 activas a la vez. Barrido de
+`blade_count` IDÉNTICO para las 2 escenas: `{2000, 8000, 32000, 80000,
+144000}`, `field_radius=20.0` fijo en todo el barrido (a diferencia de la
+escalera de la sesión 18, que escalaba el radio junto con la densidad —
+acá el área se mantiene fija a propósito, porque la pregunta es "misma
+densidad, densidad creciente", no "campo más grande"). Por paso: esperar
+estabilización de primitivos, medir 30 frames de FPS/primitivos/draws en
+cámara "altura jugador" (métrica confiable) y cámara "pájaro"
+(informativa), con frame-time en ms además de FPS crudo.
+
+**Resultados (vista jugador, la confiable)**:
+
+| blade_count | billboard fps | billboard ms/frame | billboard primitivos | individual fps | individual ms/frame | individual primitivos |
+|---|---|---|---|---|---|---|
+| 2000 | 1.0 (outlier — stall de compilación de shader, mismo patrón que la sesión 17) | — | 743040 | 73.0 | 13.70 | 735356 |
+| 8000 | 79.0 | 12.66 | 789120 | 80.0 | 12.50 | 758396 |
+| 32000 | 40.3 | 24.79 | 973656 | 77.0 | 12.99 | 850664 |
+| 80000 | 14.5 (14.3–17.0 en 3 repeticiones de verificación, estable) | 68.81 | 1342224 | 32.3 (ver nota) | 30.93 | 1034948 |
+| 144000 | 9.4 | 106.38 | 1833744 | 30.0 | 33.33 | 1280708 |
+
+**Nota sobre el punto 80000 de la brizna individual**: la primera corrida
+dio `fps=11.0`, peor que la mata billboard ahí (`14.5`) — rompiendo la
+tendencia del resto del barrido. Se re-verificó con 3 repeticiones
+seguidas del mismo paso: `fps=3.0, 3.0, 32.3` — mismos primitivos
+(`1034948`) en las 3, o sea es un stall de pipeline/shader en las
+primeras invocaciones de ese estado particular (probablemente
+Terrain3DInstancer arma un nuevo batch de `MultiMesh` al cruzar cierto
+umbral de instancias y eso dispara una recompilación), no una propiedad
+real de rendimiento de la técnica — igual que el stall ya documentado en
+la sesión 17 para la primera muestra de todo un barrido. Se usa el valor
+"calentado" (`32.3fps`/`30.93ms`, la 3ª repetición) como representativo,
+que además es el que encaja con la tendencia del resto de la tabla.
+
+**Hallazgo principal**: a igual número de instancias, la brizna
+individual rinde igual o mejor que la mata billboard en TODOS los pasos
+medidos, y la ventaja crece con la densidad — no achica:
+
+- 8000: prácticamente empatados (79.0 vs 80.0 fps).
+- 32000: individual ~1.9x más rápida (24.79ms vs 12.99ms).
+- 80000: individual ~2.2x más rápida (68.81ms vs 30.93ms).
+- 144000: individual ~3.2x más rápida (106.38ms vs 33.33ms).
+
+Encaja con lo ya medido en la sesión 18 (Test B, comparación de mallas
+bajo material de depuración): la mata billboard tiene el doble de
+triángulos por instancia (8 vs 4) Y el doble de tarjetas de doble cara
+superpuestas (`cull_disabled`) por instancia (4 vs 2) — a densidad baja
+esa diferencia no se nota (el piso de costo lo pone el terreno), pero a
+densidad alta el costo de overdraw no escala solo con triángulos, escala
+peor — la proporción de frame-time (3.2x a 144000) es mayor que la simple
+proporción de triángulos (2x), consistente con la hipótesis de overdraw
+de la sesión 18, ahora con un costo real en FPS detrás, no solo primitivos.
+
+**Conclusión práctica**: si el objetivo es que el pasto aguante subir la
+densidad sin arrodillar el framerate, la brizna individual cruzada
+(`grass_blade_single`, ya con UV real desde esta sesión) es hoy una base
+más barata que la mata billboard de 4 tarjetas, y la brecha se agranda
+justo donde más importa (densidad alta). Esto no invalida el diseño
+autorado a mano del billboard (sigue siendo la opción visualmente más
+lograda) — sí confirma con datos reales de FPS, no solo primitivos, que
+arreglar el overdraw (menos tarjetas de doble cara superpuestas, o LOD
+que baje de mata a brizna individual a distancia) sigue siendo la mejora
+de rendimiento pendiente con más impacto, tal como ya había marcado el
+usuario antes de pedir esta comparación.
+
+**Pendiente**: LOD para el billboard actual (posiblemente cayendo a
+`grass_blade_single`, ahora candidata real gracias a esta sesión, en vez
+de una malla todavía más simple) y arreglar/reducir el overdraw
+(`cull_disabled`) siguen sin implementarse — el usuario ya los marcó como
+tarea aparte. El costo propio del terreno de Terrain3D (LOD/clipmap)
+tampoco se investigó todavía. `scenes/test/grass_perf_*.tscn` y el cambio
+de UV en `grass_blade_single` no están comiteados a esta hora — el
+usuario no pidió commit todavía esta sesión.
+
+## Actualización 2026-08-19 (vigésima sesión): densidad de píxeles de silueta, sin Terrain3D — la comparación correcta
+
+El usuario corrigió la sesión anterior con dureza y con razón: pidió
+explícitamente no usar Terrain3D, pidió el modelo individual con la punta
+en V que "estábamos usando antes", y pidió una forma de medir densidad de
+píxeles — ninguna de las 3 cosas se hizo. Diagnóstico concreto de por qué,
+antes de rehacer nada:
+
+1. **El proyecto ya tenía la herramienta correcta**: `tools/grass_density_probe.gd`,
+   borrada al migrar a Terrain3D pero documentada en `docs/AHORA.md`
+   (líneas ~48-55) y recuperable del historial de git (`git show
+   3a62352:tools/grass_density_probe.gd`). Arma una escena aislada (fondo
+   negro sólido, luz ambiental desactivada) y cuenta píxeles-de-silueta
+   por triángulo — exactamente la pregunta del usuario. Se había citado
+   esta sesión (para el punto de `--headless` vs. pantalla real) sin
+   notar que también contestaba la pregunta de fondo.
+2. **`grass_blade_single.blend` sí es el modelo con la V** — la propia
+   herramienta vieja lo nombra `"single_3000"` y las otras generadoras
+   (`generate_grass_blade_tuft.py`, `generate_grass_blade_flat.py`) lo
+   citan como "el modelo con punta en V". El problema no era el modelo,
+   era el UV que se le agregó en la sesión anterior: se verificó
+   muestreando el atlas real con PIL que la columna 0 está pintada para
+   un rectángulo (fila superior mayormente transparente, salto abrupto a
+   ~216px de ancho unas filas después — no una silueta que se afina a un
+   punto), mientras que la brizna individual es geométricamente un rombo
+   (tip/waist_l/waist_r/base). Mapear el rombo sobre arte pintado para un
+   rectángulo no preserva la V — el resultado es un recorte arbitrario
+   del atlas, no la forma de la malla. Se revirtió por completo: `git
+   checkout` sobre `grass_blade_common.py` y
+   `generate_grass_blade_single.py`, `.blend`/preview regenerados sin UV.
+
+**Metodología corregida** (`measure_grass_pixel_density.gd`, scratch, no
+comiteado): adaptación directa de `grass_density_probe.gd`. Como
+`GrassField` ya no existe, se reemplazó por un `MultiMeshInstance3D`
+suelto poblado a mano (dispersión uniforme en un disco de
+`FIELD_RADIUS=6.0`, sin terreno de por medio) — sin Terrain3D en ningún
+punto del script. Confirmado con el usuario por `AskUserQuestion` qué
+material usar para la brizna individual: **color plano sin textura**
+(`StandardMaterial3D` unshaded, `albedo_color = blade_color`, sin atlas)
+— así la silueta medida es la de la malla real, la V se ve tal cual es.
+La mata billboard, en cambio, se midió con su shader/atlas reales
+(`grass_blade.gdshader` + `grass_card_atlas.png`) — su silueta genuina
+viene del atlas pintado, no de la malla (que es solo 4 rectángulos), así
+que usar el material real ahí es lo representativo, no una inconsistencia
+con la decisión de arriba. Mismo truco que la herramienta original:
+`individual_3000` (brizna, 4 tris/instancia, 3000 instancias, 12000 tris
+totales) vs. `billboard_1500` (mata, 8 tris/instancia, 1500 instancias,
+12000 tris totales) — **igual presupuesto de triángulos**, no igual
+cantidad de instancias. `billboard_3000` se agregó como punto secundario
+a igual cantidad de instancias (2x el presupuesto de triángulos), mismo
+patrón que el `tuft_3000` del original. 2 ángulos de cámara (pájaro y
+altura de ojos), como el original — un solo ángulo puede favorecer un
+diseño sobre otro.
+
+**Resultados** (píxeles de silueta contra fondo negro, sin contaminación
+de terreno/cielo):
+
+| vista | variante | instancias | tris/instancia | tris totales | px de pasto | px/tri |
+|---|---|---|---|---|---|---|
+| pájaro | individual_3000 | 3000 | 4 | 12000 | 14429 | 1.2024 |
+| pájaro | billboard_1500 | 1500 | 8 | 12000 | 27388 | 2.2823 |
+| pájaro | billboard_3000 | 3000 | 8 | 24000 | 31936 | 1.3307 |
+| altura de ojos | individual_3000 | 3000 | 4 | 12000 | 42278 | 3.5232 |
+| altura de ojos | billboard_1500 | 1500 | 8 | 12000 | 63080 | 5.2567 |
+| altura de ojos | billboard_3000 | 3000 | 8 | 24000 | 62806 | 2.6169 |
+
+**A igual presupuesto de triángulos (12000), la mata billboard cubre más
+píxeles que la brizna individual en las 2 vistas**: 1.90x desde pájaro,
+1.49x desde altura de ojos. Tiene sentido — la mata está pintada y
+autorada a mano específicamente para verse llena desde cualquier ángulo,
+con 4 tarjetas en distintos yaws.
+
+**A igual cantidad de instancias (3000, la mata usando el doble de
+triángulos), el resultado depende del ángulo**: desde pájaro la mata
+sigue ganando levemente en píxeles por triángulo (1.11x). **Desde altura
+de ojos la brizna individual gana** (individual 3.5232 px/tri vs. mata
+2.6169 px/tri — la brizna es 1.35x más eficiente por triángulo ahí). Con
+la cámara casi al ras del suelo, las tarjetas de la mata (en yaws fijos
+0/45/90/135°, sin rotar hacia cámara) a veces quedan casi de canto y
+proyectan poca silueta, mientras que las briznas finas y verticales
+siempre proyectan una silueta larga sin importar el ángulo de vista
+horizontal.
+
+**Conclusión práctica, distinta y más matizada que la de la sesión
+retractada**: no es cierto que la brizna individual "gane" en general —
+gana específicamente en la vista a la altura del jugador (la que más
+importa en el juego) cuando se compara a igual cantidad de instancias,
+pero pierde en densidad visual pura a igual presupuesto de triángulos (la
+mata, bien diseñada, cubre más por triángulo cuando se le da la
+oportunidad). Esto explica por qué el equipo diseñó la mata de 4 tarjetas
+en primer lugar — si hiciera falta MENOS instancias para la misma
+sensación de lleno, gana en densidad de cobertura. El costo real (medido
+con FPS, sesión retractada, con la salvedad de que esa medición usaba
+Terrain3D real y no debería descartarse solo por eso — el patrón
+relativo billboard-más-caro probablemente se sostiene, dado que coincide
+con el hallazgo de overdraw de la sesión 18, pero no se puede citar como
+número válido sin remedir con la metodología correcta) sigue sin volver a
+medirse con la metodología sin-Terrain3D. Si se quiere el número de FPS
+real definitivo, hay que rehacerlo con un `MultiMeshInstance3D` suelto
+(como esta sesión) en vez de escenas de Terrain3D.
+
+**Pendiente**: no se remidió FPS real con la metodología correcta (sin
+Terrain3D) — solo densidad de píxeles. Si hace falta el número de FPS
+real, replicar el barrido de densidad de la sesión retractada pero sobre
+un `MultiMeshInstance3D` suelto, no sobre escenas de Terrain3D. El LOD y
+el overdraw del billboard actual siguen sin tocarse. `measure_grass_pixel_density.gd`
+queda en el directorio de scratch de la sesión, no comiteado.
+
+## Actualización 2026-08-19 (vigésimo primera sesión): por qué el pasto es caro, de verdad — cruzado con el código real de breath-of-freedom y con BOTW/Flower investigados
+
+Sesión larga, de conversación y de investigación (no se tocó código del
+proyecto), disparada porque el usuario vio las dos escenas de la sesión
+20 (`scenes/test/grass_compare_*.tscn`) y confirmó **la mata billboard se
+ve con mejor densidad visual que la brizna individual**. La pregunta que
+siguió — cómo subir la densidad x1000 y ver el rendimiento ahí — abrió
+una cadena de correcciones del usuario que vale la pena dejar completa,
+porque cambian la comprensión del problema más que cualquier número.
+
+**Ninguna de las correcciones de esta sesión tocó código** — quedan
+apuntadas para decidir con ellas en la cabeza, no como TODOs de código.
+
+### Las correcciones del usuario, en orden, y qué cambiaron
+
+1. **"No es eso lo que te pedí"** — pedir "medir rendimiento" no es lo
+   mismo que contar triángulos/primitivos. Faltaba FPS real, comparado
+   entre pastos, y viendo cómo cambia al crecer la densidad — no solo un
+   conteo estático.
+2. **"Lo que hiciste está muy mal"** — tres fallas reales en la
+   sesión 19 (retractada): usé Terrain3D habiendo pedido explícitamente
+   que no; el modelo de brizna individual perdió su punta en V real al
+   mapearle un UV pensado para el rectángulo de la mata, no para su
+   rombo; y no había forma de medir densidad de píxeles, que es lo que
+   hacía falta, no FPS con Terrain3D de por medio. Esto llevó a
+   reconstruir todo con la metodología correcta (sesión 20): sin
+   Terrain3D, brizna sin UV/alfa (para no repetir el error de la V), y
+   `tools/grass_density_probe.gd` (borrada del proyecto, recuperada de
+   `git show 3a62352` en el repo de breath-of-freedom) como referencia de
+   cómo medir densidad de píxeles de silueta correctamente.
+3. **"No me estás entendiendo, en breath of freedom la brizna era
+   opaca, por lo que tu conclusión del alfa en la brizna está mala."**
+   Corrección sobre una conclusión mía a mitad de sesión: dije que
+   nuestra brizna opaca "lograba gratis lo que a breath-of-freedom le
+   costó una sesión fracasar en conseguir" — falso. La brizna
+   individual (su "hoja"/"púa") **siempre fue opaca en los dos
+   proyectos**, nunca fue un problema en ninguno de los dos. El
+   alfa-vs-opaco que sí fue un problema real ahí fue en la **carta**
+   (su equivalente a nuestra mata de 4 tarjetas), no en la brizna. No
+   hay ningún logro nuestro que contrastar ahí — es la misma situación
+   en ambos lados.
+4. **"Todos los puntos que me dijiste ya están solucionados, y no
+   mejoró el rendimiento en el otro juego."** La corrección más
+   importante de la sesión: le estaba devolviendo una lista de "técnicas
+   que solucionan fill-bound" como si fueran una receta pendiente,
+   cuando breath-of-freedom ya las había aplicado TODAS (brizna opaca,
+   alfa aislado a la carta vía prepass propio, PBR completo sacado,
+   sombras apagadas) y el pasto **seguía costando 12.94ms de 15.29ms
+   de frame — 85%.** Ver más abajo por qué, una vez investigado a fondo.
+5. **"No, no es eso lo que yo vi en el juego... por lo que dibujamos en
+   pantalla lo que era necesario dibujar... y aun así no logramos buen
+   rendimiento."** Corrigió mi framing de "el problema es la transición
+   lejana, hay que esconderla" — el problema real es que **ni siquiera
+   la geometría necesaria y ya culleada/instanciada entraba en
+   presupuesto**, mucho antes de llegar a ninguna transición lejana. No
+   es un problema de distancia ni de disimular una costura; es que la
+   cantidad de pasto realmente visible, ya optimizada, sigue siendo
+   demasiada para esa GPU.
+6. **"Todavía no entiendo por qué la industria usa billboards... no me
+   cabe en la cabeza que sea mejor."** Insistir en esto obligó a
+   investigar de verdad (no asumir) cómo renderiza pasto BOTW — y la
+   respuesta cambió mi propia explicación anterior: **el pasto principal
+   de BOTW no usa billboards con alfa en absoluto.** Mi primera respuesta
+   a "por qué la industria usa billboards para pasto" partía de un
+   supuesto no verificado (que billboard-con-alfa es la técnica
+   principal de pasto denso) que resultó falso.
+
+### La pregunta de fondo: por qué el alfa es caro (ya sin dar vueltas)
+
+Analogía que quedó como referencia: una torre de platos opacos, un mozo
+puede mirarla desde arriba y saltarse todo lo que está tapado por el de
+encima (Early-Z). Con platos translúcidos con agujeros al azar (una
+tarjeta de pasto con alfa recortado), el mozo no puede saber si algo
+tapa hasta examinarlo — tiene que revisar cada capa superpuesta, siempre,
+aunque al final la mayoría no importara. Con geometría opaca el costo es
+**1 sombreado por píxel, siempre** (el de adelante, se acabó). Con alfa,
+es **N sombreados por píxel**, con N = cuántas capas alfa se superponen
+ahí — exactamente lo que explica que en la sesión 18, al subir la
+densidad, los primitivos subieran 1.65x pero el FPS se cayera 10x: lo que
+importa es N (capas superpuestas por píxel), no el conteo de triángulos.
+Agrandar una tarjeta no baja N — en todo caso lo sube, porque tarjetas
+más grandes se solapan más entre sí.
+
+### Investigación real en el código de breath-of-freedom (no solo sus docs)
+
+Repo real en `/home/francisco/Programming/uneven/breath-of-freedom`
+(proyecto hermano, Rust/Bevy — mismo desarrollador, y **la misma GPU de
+desarrollo**: `AMD RX Polaris11`, confirmada en los logs de esta sesión y
+citada en su propia documentación — probablemente la misma máquina
+física).
+
+**Lo que ya tenían aplicado, confirmado leyendo `grass.rs`/`grass.wgsl`,
+no solo las conclusiones de sus docs:**
+
+- `assets/shaders/grass.wgsl:1081-1090` — sacaron `apply_pbr_lighting`
+  (evaluación de luces clusterizadas + sombra por fragmento) del pasto,
+  reemplazado por un cálculo manual mínimo (un `dot` + ambiente plano),
+  fechado 2026-08-09, con el comentario propio: *"carísimo en un frame
+  fill-bound donde el pasto es el 98% de los píxeles"*.
+- `src/visuals/grass.rs:1908-1917` — `NotShadowCaster` y
+  `NotShadowReceiver` en toda brizna. Medido: apagar sombras recibidas
+  ahorró **−0.66ms**. Real, pero muy por debajo del problema.
+- `assets/shaders/grass.wgsl:19-36,1110-1141` — un fragment shader de
+  **prepass propio** (no el default de Bevy) que hace el recorte de
+  alfa de la carta aislado, barato, sin PBR — la técnica de depth
+  pre-pass + re-test que veníamos discutiendo como "lo que faltaría
+  probar" ya estaba implementada, con la brizna opaca ni siquiera
+  entrando al `if` del `discard`.
+- Grep de `ComputePipeline`/`@compute`/`indirect`/`Indirect` en todo
+  `src/` y `assets/shaders/`: **cero resultados.** Confirmado (no solo
+  citado de sus docs): nunca usaron compute shaders ni indirect draw —
+  coincide con su propia nota de "fuera de alcance a propósito".
+
+**Con TODO esto ya aplicado, el pasto seguía costando 85% del frame.**
+Ninguna optimización de shading que se nos ocurrió (y a ellos también)
+estaba pendiente — ya la habían hecho, y el número no bajó lo suficiente.
+
+**Por qué, entonces — la explicación que se sostiene después de revisar
+todo:** nunca fijaron un presupuesto de densidad/distancia y trabajaron
+hacia atrás desde ahí. Citas propias, ya eran conocidas pero no atadas a
+esta conclusión hasta ahora: *"olvidémonos del techo por ahora,
+optimizamos cuando logremos el feeling correcto"* y *"el techo por vista
+sube de 2 a 3 millones de triángulos, como deuda declarada"*. El orden
+fue: crecer la densidad hasta que se viera bien, optimizar shading
+después. Se les acabaron los trucos de shading (todos aplicados, todos
+con ahorro real pero chico) sin haber tocado nunca la variable que
+realmente pesa: cuánta área con pasto se cubre.
+
+### BOTW real (investigado por web, no asumido) — y corrige mi propia respuesta anterior
+
+Varias fuentes técnicas independientes (`shaders-botw-grass` de Daniel
+Ilett, análisis técnico de ResetEra, etc., ver links abajo) coinciden:
+**cada brizna de BOTW es 1 SOLO TRIÁNGULO, totalmente opaco, sin
+textura, sin alfa.** El color sale de color-por-vértice (base
+oscura/negra, punta clara/blanca — el mismo gradiente que nuestro propio
+`grass_blade.gdshader` ya hace con `blade_color`/`tip_color`, salvo que
+el nuestro además samplea `tex.a` de un atlas, que BOTW no hace en
+absoluto para su brizna). El viento es empujar el vértice de la punta,
+nada más.
+
+Billboards con alfa sí existen en BOTW, pero **no para el pasto
+principal** — para árboles/arbustos (pocas instancias, cientos, no
+cientos de miles — el impuesto de perder Early-Z no importa si N nunca
+crece) y para una capa de transición a media distancia del pasto (una
+"estera" citada en la propia tabla de observación de `BOTWGrass.md`, que
+esa misma tabla dice que "se delata" — o sea ni BOTW logra ocultarla del
+todo).
+
+**Esto corrige mi primera respuesta de esta sesión** ("por qué la
+industria usa billboards para pasto") — partía de un supuesto no
+verificado. La industria evita el alfa específicamente para la capa de
+mayor densidad, y solo lo usa donde la cantidad de instancias
+naturalmente se mantiene baja (árboles) o como capa de transición
+puntual (no la mayoría del campo).
+
+### Flower (investigado por web) — un problema distinto, no fill-rate
+
+200.000 briznas moviéndose a la vez, apoyado explícitamente en los
+**SPU del PS3** (coprocesadores paralelos del Cell) según sus propios
+desarrolladores — *"solo era posible en PS3"*. Es un problema de
+generación/animación por CPU/cómputo paralelo, no de fill-rate de
+GPU — el equivalente moderno sería compute shaders (lo que ni nosotros
+ni breath-of-freedom usamos). No es directamente aplicable a nuestro
+cuello de botella (que ya sabemos que es fill-bound, no de generación).
+
+### Árboles y matas: billboards sí, pero por una razón de cantidad, no de técnica
+
+Sí son billboards — pero la razón de que funcionen ahí y no en el pasto
+denso es la **cantidad de instancias**, no una propiedad mágica de la
+técnica. Con pocos cientos de árboles en cámara, aunque cada uno pague el
+impuesto de perder Early-Z, N (capas superpuestas por píxel) nunca crece
+lo suficiente para doler. La técnica estándar es LOD por capas (cerca:
+geometría 3D real; lejos: un impostor tipo "billboard cloud" — el árbol
+3D real renderizado desde muchos ángulos a un atlas, y a distancia se
+muestra el ángulo más parecido en un solo quad, dando look 3D real por 2
+triángulos fijos). Para que un billboard de árbol/mata no cueste
+overdraw contra el pasto opaco de al lado, la técnica profesional
+estándar es **depth pre-pass + re-test con profundidad igual (Z-equal)**
+— decidir qué se ve una vez, barato, en una pasada de solo-profundidad
+(con el recorte de alfa incluido ahí), y que la pasada de color cara
+corra una sola vez por píxel visible, sin importar cuántas capas alfa se
+superpongan en profundidad. Confirmado que breath-of-freedom ya la tiene
+implementada (ver arriba). Fuentes: to-earlyz-or-not, PowerVR UE4 tips,
+Simplygon sobre billboard clouds — todas linkeadas en el mensaje
+original de esta sesión.
+
+### Qué de todo esto es nativo en Godot, y qué hay que construir
+
+| técnica | equivalente en Godot | estado en nuestro proyecto |
+|---|---|---|
+| Vertex pulling / datos por instancia sin entidad | `MultiMesh`/`MultiMeshInstance3D` | Ya lo usamos vía `Terrain3DInstancer` |
+| Sin sombras emitidas | `GeometryInstance3D.cast_shadow` | Ya en `SHADOWS_OFF` (`grass_terrain_instancer.gd:147`) |
+| PBR completo sacado, luz mínima | `render_mode unshaded` | **Más agresivo que breath-of-freedom** — no evaluamos ninguna luz, ni siquiera la direccional simple que ellos dejaron |
+| Sin sombras recibidas | consecuencia de `unshaded` | Gratis — `unshaded` nunca llama a la función de luz, no verificado explícitamente pero es el comportamiento esperado |
+| Depth pre-pass para geometría opaca | Forward+/Clustered lo hace automático (lo necesita para clustering de luces) | Gratis para lo opaco |
+| Frustum culling | Automático por nodo/AABB | Gratis, pero por nodo/chunk entero, NO por instancia dentro de un `MultiMesh` (confirmado empíricamente sesión 17) |
+| Chunking espacial (campo dividido en varios `MultiMeshInstance3D` chicos) | No existe automático | Hay que construirlo — mismo hueco que breath-of-freedom |
+| Prepass propio con recorte de alfa aislado | No verificado si Forward+ lo hace automático para `alpha_to_coverage` | **Pendiente de confirmar contra el motor real** — es lo más concreto para investigar próxima sesión si se retoma el alfa de la mata |
+| Culling por oclusión por instancia dentro de un `MultiMesh` | `Occluder3D` existe, no confirmado si actúa por instancia o solo por nodo | No verificado, mismo hueco que ellos |
+| Compute shaders / indirect draw | Existe en Godot (compute shaders sí, indirect draw parcial) | Ninguno de los dos proyectos lo usa hoy |
+
+### La mejor forma de hacer pasto, según todo lo investigado esta sesión
+
+Para la capa de **mayor densidad** (la que da la sensación de "campo
+lleno"): geometría opaca, sin alfa, sin textura — color por gradiente de
+vértice (ya lo tenemos, `blade_color`→`tip_color`), sombras apagadas
+(ya lo tenemos), sin evaluación de luz (ya lo tenemos, somos más
+agresivos que la referencia). Es literalmente lo que la industria
+(BOTW) confirma que funciona, y es lo que ya tenemos como
+`grass_blade_single` — la brizna individual, no la mata.
+
+El alfa (billboards) se reserva para donde la cantidad de instancias es
+naturalmente baja — árboles, arbustos — combinado con un depth pre-pass
+propio para que no le cueste overdraw al pasto opaco de al lado.
+
+**Lo que esto NO resuelve, y es la razón por la que breath-of-freedom
+nunca cerró el problema pese a tener la técnica correcta**: ninguna
+técnica de shading evita que cubrir MUCHA área con pasto siga costando
+mucho fill-rate. La técnica correcta (opaca, sin alfa, sombras/luz
+mínimas) es una condición necesaria, no suficiente — sin un presupuesto
+de densidad/distancia real, calibrado contra el hardware, se puede tener
+la técnica perfecta y seguir sin buen rendimiento, exactamente lo que le
+pasó a ellos.
+
+### Pendiente para mañana, explícito
+
+**El usuario lo dejó así, textual**: la próxima sesión es decidir **qué
+presupuesto (de densidad/distancia/triángulos) es el correcto** para
+nuestro juego — no una técnica nueva, una decisión de alcance, informada
+por todo lo de arriba. Nada de lo hablado esta sesión se implementó en
+código; es puramente de análisis/documentación, a propósito.
+
+Otros pendientes ya anotados en sesiones anteriores, sin tocar: LOD real
+para el billboard actual (candidato: caer a `grass_blade_single` a
+distancia), confirmar el comportamiento del prepass de Godot con
+`alpha_to_coverage`, investigar el costo propio de Terrain3D
+(LOD/clipmap), y decidir sobre `art/blender/grass/grass_clump_tuning.blend`
+(sigue sin trackear).

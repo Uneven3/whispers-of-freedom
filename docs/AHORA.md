@@ -401,7 +401,7 @@ entradas (`New Mesh` + la nuestra), estable/idéntico byte a byte.
 ## Rendimiento del pasto — resumen para la próxima sesión (2026-08-19)
 
 Medido con renderizado real de Godot (no `--headless`), ver
-`docs/pasto_godot.md` sesiones 17-18 para metodología y tablas completas:
+`docs/pasto_godot.md` sesiones 17-19 para metodología y tablas completas:
 
 - **El pasto no es el cuello de botella a densidad normal.** El terreno
   solo ya pesa ~720000 primitivos; subir el pasto de 1000 a 16000
@@ -409,12 +409,59 @@ Medido con renderizado real de Godot (no `--headless`), ver
 - **El conteo de triángulos por tarjeta escala perfecto y lineal**
   (8/4/2 tris → 4:2:1 en el delta de primitivos, medido con un material
   de depuración que neutraliza el efecto de la transparencia). Bajar
-  triángulos por tarjeta no es la palanca que más rinde hoy.
+  triángulos por tarjeta no es la palanca que más rinde hoy... a
+  densidad normal.
 - **A densidad extrema sí se vuelve caro, pero no por triángulos**: a
   radio=120/144000 instancias, FPS cae ~10x (71→7) mientras los
   primitivos solo suben ~1.65x — hipótesis: overdraw de tarjetas
   `cull_disabled` (ambas caras siempre) muy superpuestas
   (`clump_spread` chico), no throughput de vértices. No confirmado con
   un profiler de GPU real (no disponible en este flujo de trabajo).
+- **Sesión 19 RETRACTADA** — midió FPS con 2 escenas de Terrain3D pese a
+  que el usuario había pedido explícitamente no usar Terrain3D, y le
+  agregó a `grass_blade_single` un UV hacia el atlas que le rompió la
+  silueta en V reconocible (el atlas está pintado para las tarjetas
+  rectangulares de la mata, no para el rombo de la brizna individual). Se
+  revirtió todo. Ver sesión 20.
+- **Sesión 20 — densidad de píxeles de silueta, sin Terrain3D** (la
+  metodología correcta, adaptada de `tools/grass_density_probe.gd`, la
+  herramienta que ya existía para esto): a igual PRESUPUESTO DE
+  TRIÁNGULOS, la mata billboard cubre más píxeles que la brizna
+  individual en ambas vistas (1.90x pájaro, 1.49x altura de ojos) — está
+  pintada a mano para verse llena. A igual CANTIDAD DE INSTANCIAS
+  (mata = 2x los triángulos), depende del ángulo: la mata sigue ganando
+  desde pájaro (1.11x px/tri), pero la brizna individual gana desde
+  altura de ojos (1.35x px/tri) — las tarjetas de la mata, en yaws fijos
+  sin rotar hacia cámara, a veces quedan casi de canto vistas al ras del
+  suelo. No es "la brizna individual siempre gana" — depende de si se
+  compara a igual triángulos o igual instancias, y del ángulo de cámara.
+  Pendiente: remedir FPS real (no solo píxeles) con esta misma
+  metodología sin Terrain3D (`MultiMeshInstance3D` suelto), ver
+  `docs/pasto_godot.md` vigésima sesión.
+- **Sesión 21 — por qué el pasto es caro, investigado a fondo (código real
+  de breath-of-freedom + BOTW/Flower por web), sin tocar código.** La
+  mejor forma de hacer pasto denso, confirmada contra la industria: 100%
+  opaco, sin alfa, sin textura, color por gradiente de vértice — ya lo
+  tenemos en `grass_blade_single`, y nuestro shader (`unshaded` total) es
+  más agresivo que el de breath-of-freedom (ellos redujeron su PBR a una
+  luz simple; nosotros no evaluamos ninguna). El alfa/billboard se
+  reserva para donde hay pocas instancias (árboles) o como capa de
+  transición, nunca para la capa de mayor densidad. **Pero la técnica
+  correcta no alcanza sola**: breath-of-freedom ya tenía TODO esto
+  aplicado (confirmado leyendo su código real, no solo sus docs —
+  `apply_pbr_lighting` sacado, sombras apagadas, prepass propio con
+  recorte de alfa aislado a la carta) y el pasto seguía costando **85%
+  del frame GPU**. La causa real: nunca fijaron un presupuesto de
+  densidad/distancia y trabajaron hacia atrás desde ahí — dejaron crecer
+  la densidad hasta verse bien, con la intención explícita de "optimizar
+  después". Detalle completo, tabla de qué es nativo en Godot (bastante:
+  `MultiMesh`, `unshaded`, depth pre-pass automático para lo opaco,
+  `cast_shadow` off) vs qué hay que construir (chunking espacial,
+  confirmar prepass con `alpha_to_coverage`, culling por oclusión por
+  instancia), en `docs/pasto_godot.md` vigésimo primera sesión.
+  **Pendiente explícito para la próxima sesión, pedido por el usuario:
+  decidir qué presupuesto de densidad/distancia/triángulos es el
+  correcto para este juego — no una técnica nueva, una decisión de
+  alcance.**
 - Ver punto 7 arriba: el terreno de Terrain3D es el sospechoso principal
-  si hace falta seguir optimizando.
+  si hace falta seguir optimizando el piso de costo a densidad normal.
