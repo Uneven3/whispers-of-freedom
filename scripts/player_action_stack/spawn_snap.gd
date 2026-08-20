@@ -97,6 +97,14 @@ func _snap_to_terrain() -> void:
 	if is_nan(height):
 		return
 	parent.global_position.y = height + _get_body_half_height() + clearance
+	# Con physics_interpolation activo (project.godot), el motor dibuja
+	# posiciones intermedias entre el tick anterior y el actual. Este salto de
+	# spawn no es movimiento: sin avisar, los primeros frames muestran al
+	# jugador deslizandose desde donde estaba antes del snap hasta el suelo.
+	# reset_physics_interpolation() descarta el estado previo y arranca desde
+	# la posicion nueva. Regla general: todo teletransporte necesita esta
+	# llamada; el movimiento continuo no.
+	parent.reset_physics_interpolation()
 
 func _get_body_half_height() -> float:
 	if Engine.is_editor_hint():

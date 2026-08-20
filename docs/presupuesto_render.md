@@ -299,6 +299,38 @@ capas superpuestas, no con la cantidad de partículas. Es exactamente el
 mismo régimen que hizo que el pasto con alfa costara 18-25x. Medir con la
 cámara real antes de presupuestarlas.
 
+## Agua
+
+Medido 2026-08-20 con un plano de 200×200 m subdividido 100×100, sobre la
+escena real, a 1920×1080.
+
+**Advertencia sobre estos números**: el plano quedó por encima del terreno y
+**tapa la escena entera**, así que el delta contra la base (el agua opaca da
+−3,59 ms) no significa "el agua es barata" — significa que el agua reemplazó
+lo que había detrás. Ese número no se debe citar. Lo que sí vale es la
+comparación **entre las tres variantes**, que cubren exactamente la misma
+superficie:
+
+| agua, misma superficie | GPU ms | contra opaca |
+|---|---|---|
+| opaca | 4,95 | — |
+| transparente | 9,78 | **+4,83 (1,98x)** |
+| transparente + refracción | 11,20 | **+6,25 (2,26x)** |
+
+El mismo patrón de siempre: la transparencia duplica el costo, y la
+refracción encima fuerza una copia de la pantalla por frame.
+
+Consecuencia de diseño: **el agua es el peor caso del proyecto**, porque a
+diferencia del pasto no se puede ralear ni alejar — un lago cubre lo que
+cubre, y si el jugador lo mira de frente ocupa media pantalla. Si va a haber
+agua transparente, tiene que entrar al presupuesto como una tajada propia
+antes de construirla, no después. Un río angosto y un lago que llena el
+horizonte son dos presupuestos distintos.
+
+Todavía sin medir: agua opaca con reflejo estilizado (sin refracción ni
+copia de pantalla), que es la que usa la mayoría de los juegos con esta
+dirección de arte y probablemente sea la respuesta correcta acá.
+
 ## Flores, arbustos y árboles: ya están medidos, indirectamente
 
 Son el mismo problema que el pasto, y la respuesta ya la tenemos:
@@ -307,6 +339,15 @@ Son el mismo problema que el pasto, y la respuesta ya la tenemos:
   color por gradiente de vértice. En ese régimen el costo marginal *baja*
   con la densidad (Early-Z rechaza lo tapado) y encima **ocluyen el terreno
   caro**, igual que el pasto opaco, que mide costo negativo.
+- **Arbustos**: tener volumen no obliga a usar alfa. Un arbusto es un
+  puñado de hojas grandes opacas orientadas en distintas direcciones, que es
+  el mismo régimen del pasto: Early-Z descarta lo tapado y el costo marginal
+  baja con la densidad. Lo que el alfa compra ahí es **silueta gratis** (el
+  recorte del atlas da forma de hoja sin modelarla) — o sea una economía de
+  trabajo de arte, no de rendimiento. Punto medio sin medir todavía:
+  `alpha_scissor` (recorte duro) en vez de `alpha` mezclada o
+  `alpha_to_coverage`, porque el recorte duro puede conservar escritura de
+  profundidad y recuperar buena parte del Early-Z. Medirlo antes de decidir.
 - **Árboles** son el caso donde el alfa sí se justifica, pero por una razón
   de cantidad, no de técnica: con cientos de instancias en vez de miles, N
   nunca crece lo suficiente para que perder Early-Z duela. Lo que sí van a

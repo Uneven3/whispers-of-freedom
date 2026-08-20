@@ -110,6 +110,22 @@ combat_takedown={
 ]
 }
 
+[physics]
+
+; Desacopla los ticks de fisica del framerate de render: el motor dibuja
+; posiciones intermedias en vez de saltar de tick en tick. A 60 fps con
+; fisica a 60 Hz no cambia casi nada, pero en cuanto el frame rate deje de
+; ser multiplo exacto del tick (una caida, o un objetivo de 30 fps) es lo
+; que separa el movimiento fluido del entrecortado. Higiene, no
+; optimizacion: se pone antes de necesitarla, no despues.
+;
+; OJO: todo teletransporte necesita reset_physics_interpolation() en el
+; nodo, o los primeros frames lo muestran deslizandose desde la posicion
+; vieja. Hoy el unico es SpawnSnap (scripts/player_action_stack/spawn_snap.gd).
+; debug/settings/physics_interpolation/enable_warnings ya viene en true, o
+; sea que el motor avisa si alguien agrega otro y se olvida.
+physics/common/physics_interpolation=true
+
 [rendering]
 
 renderer/rendering_method.mobile="forward_plus"
