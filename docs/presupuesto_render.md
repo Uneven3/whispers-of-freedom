@@ -157,13 +157,56 @@ esta escena de prueba, 64 000 briznas cuestan 1,16 ms y llenan el 34% de
 la pantalla (que es donde la cobertura satura con esta cámara). Los 3,0
 ms asignados compran holgadamente más densidad de la que satura la vista.
 
-**Pero esto todavía no es la conversión final**: se midió sin terreno,
-sobre suelo plano y contra fondo negro. Los ratios se trasladan, los ms
-absolutos no. Falta medir la brizna opaca **en `terrain_base.tscn`**, y
-para eso hace falta un cambio de código que todavía no está hecho —
-`TerrainGrassInstancer._build_shader_material()` construye siempre el
-shader del atlas, no tiene camino opaco (`GrassProbeField` sí lo tiene,
-vía `flat_material`).
+**Y esto ya se cerró, midiendo dentro de la escena real** (2026-08-20,
+vía `tools/measure/scene_report.gd -- --grass=opaque`, que enchufa un
+instancer con material opaco en lugar del de producción sin tocarlo).
+Misma cantidad de instancias (4000), misma dispersión, misma cámara:
+
+| | pasto de producción (alfa) | pasto opaco |
+|---|---|---|
+| costo del pasto | 5,01 ms | **2,34 ms** |
+| capas de overdraw, promedio | 12,92 | **1,40** |
+| capas máximas | 25,29 (saturado) | **9,01** |
+| % del pasto con 8+ capas | 64,98 % | 0,01 % |
+| frame proyectado con lo reservado | 18,38 ms — excedido | 15,66 ms — **dentro** |
+
+**Cambiar la técnica del pasto, sin tocar densidad ni distancia, alcanza
+por sí solo para meter el frame dentro del presupuesto**, con 1,01 ms de
+contingencia. Pendiente antes de adoptarlo: la comparación es a igual
+cantidad de instancias, no a igual densidad visual, y hay que mirarlo
+jugado.
+
+## Overdraw, medido (y su techo)
+
+El proyecto daba el overdraw por no medible — `docs/AHORA.md` decía que
+"Overdraw es visual, no scripteable". Es falso:
+`RenderingServer.viewport_set_debug_draw(rid, VIEWPORT_DEBUG_DRAW_OVERDRAW)`
+se activa por script, el framebuffer se lee, y como el modo dibuja con
+blend aditivo y un incremento fijo por capa, se pueden **contar capas**.
+
+**Techo duro**: el incremento lo fija el motor y no es configurable. Con
+~0,0395 en lineal por capa, el buffer satura a las **~25 capas**, y a
+partir de ahí 26 capas y 200 son indistinguibles. Por eso la herramienta
+reporta siempre el % de píxeles saturados: si no es ~0, el promedio y el
+máximo son **cotas inferiores, no la medición**.
+
+Y no es hipotético: con el pasto de producción **el 10,19% de la pantalla
+satura**. En esa zona no sabemos cuánto overdraw hay, sólo que es más de
+25 capas.
+
+## El pase de sombras cuesta 1,45 ms (9,7% del frame)
+
+Medido por delta — apagando `shadow_enabled` del `DirectionalLight3D` y
+restando GPU ms. **No** se infiere del conteo de primitivas del pase
+SHADOW: ese pase es depth-only y cuesta muchísimo menos por primitiva que
+el de color, así que los conteos no predicen el costo (misma razón por la
+que los triángulos nunca predijeron el costo del pasto).
+
+Los conteos igual sirven como diagnóstico de *qué* se dibuja. Dato
+llamativo: el pase de sombras dibuja **más** primitivas (480 568) y más
+draw calls (65) que el pase visible (269 792 / 44), y aun así cuesta una
+fracción — que es exactamente la demostración de por qué no se pueden
+convertir conteos en milisegundos.
 
 ## Bug encontrado midiendo: la brizna con el shader del atlas no dibuja nada
 
@@ -218,11 +261,16 @@ midiendo ms. No hecho todavía.
 
 ## Cómo se verifica
 
-`tools/render_budget_probe.gd` mide y compara contra este documento:
+`tools/measure/scene_report.gd` mide y compara contra este documento:
 
 ```
-godot --path . --resolution 1920x1080 -s tools/render_budget_probe.gd
+godot --path . --resolution 1920x1080 -s tools/measure/scene_report.gd
+godot --path . --resolution 1920x1080 -s tools/measure/scene_report.gd -- --grass=opaque
 ```
+
+Da ms por capa contra el presupuesto, costo del pase de sombras, overdraw
+cuantificado y conteos por pase. El inventario completo y las
+contaminaciones que evita están en `tools/measure/README.md`.
 
 Necesita **pantalla real** — bajo `--headless` el driver dummy no
 rasteriza y `viewport_get_measured_render_time_gpu()` devuelve 0. Por eso

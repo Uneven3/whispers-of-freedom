@@ -47,14 +47,21 @@ la bitácora viva de acá en adelante.
   cacheada de antes (ej. reindentó `ARCHITECTURE.md` de espacios a tabs sin
   que nadie lo pidiera) — correr `git status`/`git diff` después y revertir
   lo que no se pidió, antes de commitear.
-- **`tools/grass_density_probe.gd`**: compara variantes de brizna por
-  píxeles-de-silueta-por-triángulo (misma técnica que `breath-of-freedom`
-  usó para su pradera — no hay tool nativo de Godot para esto, `Performance`
-  mide la escena entera y "Overdraw" es visual, no scripteable). Necesita
-  pantalla real, **no** `--headless` (el driver dummy no rasteriza nada):
-  `godot --path . -s tools/grass_density_probe.gd`. Guarda capturas en
-  `/tmp/grass_density_probe/` para revisar a ojo — el número solo no alcanza,
-  dos vistas (pájaro/altura de jugador) pueden favorecer variantes distintas.
+- **Medir rendimiento: `tools/measure/`**, ver su `README.md`. Un solo
+  comando (`godot --path . --resolution 1920x1080 -s
+  tools/measure/scene_report.gd`) da ms por capa contra el presupuesto,
+  costo del pase de sombras, overdraw cuantificado y conteos por pase.
+  Necesita **pantalla real**, no `--headless` (el driver dummy no rasteriza:
+  todo da 0). La resolución no es opcional — la escena es fill-bound.
+  Guarda la captura de overdraw en `/tmp/godot_measure/`; mirarla es parte
+  del método, no un extra (así se encontró que el `DebugOverlay` estaba
+  contaminando el histograma).
+- **CORRECCIÓN, 2026-08-20:** este archivo venía afirmando que "Overdraw es
+  visual, no scripteable". **Es falso.**
+  `RenderingServer.viewport_set_debug_draw(rid, VIEWPORT_DEBUG_DRAW_OVERDRAW)`
+  se activa por script y el framebuffer se lee y se cuenta. Tiene un techo
+  duro: satura a las ~25 capas, y ahí 26 capas y 200 son indistinguibles —
+  por eso la herramienta reporta siempre el % de píxeles saturados.
 
 ## Pivote 2026-08-14 (ver `NORTE.md`) — ejecutado
 
@@ -404,6 +411,63 @@ pantalla).
   Toda comparación "brizna vs mata" hecha con ese shader estaba midiendo
   una brizna invisible contra una mata visible. Afecta a partes de las
   sesiones 17-19. La brizna sólo se mide bien con material opaco.
+
+## Herramientas de medición + el pasto opaco medido en la escena real, 2026-08-20
+
+Ejecutado con `/iterate-safely`; la crítica de un subagente sin contexto
+encontró tres bloqueantes antes de escribir código, y los tres eran reales
+(detalle en el mensaje de commit). Nada de código de producción se tocó:
+`tools/measure/grass_instancer_probe.gd` **hereda** de
+`scripts/world/grass_terrain_instancer.gd` y sobreescribe un solo método.
+Se prefirió heredar antes que duplicar las ~220 líneas del original porque
+dos copias del algoritmo de dispersión divergirían en silencio y mediríamos
+un campo de pasto que no es el que se shipea.
+
+**Lo que ahora se puede medir y antes no:**
+
+- **Overdraw cuantificado** (no sólo mirado). Ver la corrección arriba: el
+  proyecto lo daba por no scripteable y no lo es. Se calibra en cada corrida
+  contra un quad de una capa conocida en un `SubViewport` propio, en vez de
+  hardcodear la constante del motor.
+- **Costo real del pase de sombras**, por delta de ms (apagar
+  `shadow_enabled` y restar). Da **1,45 ms, 9,7% del frame**. No se infiere
+  de los conteos de primitivas del pase SHADOW: ese pase es depth-only y
+  cuesta muchísimo menos por primitiva que el de color — inferir ms desde
+  primitivas es la falacia que este proyecto ya descartó.
+- **Conteos por pase** (`viewport_get_render_info`), visible vs sombra vs
+  canvas. Diagnóstico, no costo. Dato llamativo: el pase de sombras dibuja
+  **más** primitivas (480 568) y más draw calls (65) que el pase visible
+  (269 792 / 44).
+
+**El resultado que cierra la pregunta abierta del presupuesto** — la brizna
+opaca medida dentro de `terrain_base.tscn`, misma cantidad de instancias
+(4000), misma dispersión, misma cámara:
+
+| | pasto de producción (alfa) | pasto opaco |
+|---|---|---|
+| costo del pasto | 5,01 ms | **2,34 ms** |
+| capas promedio | 12,92 | **1,40** |
+| capas máximas | 25,29 (clavado en el techo) | **9,01** (real) |
+| % del pasto con 8+ capas | 64,98 % | 0,01 % |
+| saturación | 10,19 % de la pantalla | ninguna |
+| frame proyectado con lo reservado | 18,38 ms — **excedido** | 15,66 ms — **dentro del sobre** |
+
+O sea: **cambiar la técnica del pasto, sin tocar densidad ni distancia,
+alcanza por sí solo para meter el frame dentro del presupuesto**, con 1,01
+ms de contingencia. El pasto con alfa no sólo cuesta el doble: está tan
+fuera de escala que el instrumento satura en el 10% de la pantalla y el
+número real de capas ahí es desconocido y mayor que 25.
+
+**Verificado, no asumido:** correr las herramientas deja `git status`
+limpio — `set_mesh_asset()` y `clear_by_mesh()` en contexto de juego no
+tocan `world_data/terrain/`. La crítica marcó con razón que esto estaba
+dicho como "ya verificado" cuando sólo se había verificado `clear_by_mesh`.
+
+**Todavía no decidido:** la comparación es a igual cantidad de instancias,
+no a igual densidad visual — una brizna cubre mucha menos pantalla que una
+mata de 4 tarjetas, y en la captura las briznas además se ven demasiado
+altas contra la cápsula del jugador. Antes de adoptar el cambio hay que
+mirarlo jugado y decidir la escala real de la brizna.
 
 ## Próximo foco (propuesto, no comprometido)
 
