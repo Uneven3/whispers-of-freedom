@@ -2363,3 +2363,74 @@ distancia), confirmar el comportamiento del prepass de Godot con
 `alpha_to_coverage`, investigar el costo propio de Terrain3D
 (LOD/clipmap), y decidir sobre `art/blender/grass/grass_clump_tuning.blend`
 (sigue sin trackear).
+
+---
+
+## Referencia: los dos shaders y el instancer
+
+Rationale que vivía en comentarios de `scripts/world/`, mudado acá por §15.
+
+### Por qué el pasto denso es opaco
+
+Medido en este proyecto, con la geometría fija y la misma cantidad de
+instancias, **el alfa cuesta entre 18x y 25x más**: pierde Early-Z, así que
+cada capa superpuesta se sombrea igual. La versión opaca además cubre *más*
+píxeles, porque no recorta nada. En la escena real: 5,01 ms contra 2,34 ms, y
+el overdraw baja de 12,92 capas promedio (con el 10% de la pantalla saturando
+el instrumento) a 1,40. Tablas completas en `docs/presupuesto_render.md`.
+
+### Por qué son dos archivos de shader y no un uniform
+
+`alpha_to_coverage` es un `render_mode`, o sea que se fija al compilar. No hay
+forma de apagarlo por material en runtime, así que la variante opaca tiene que
+ser un shader aparte. `TerrainGrassInstancer.material_mode` elige cuál.
+
+`grass_blade.gdshader` (el de tarjeta con atlas) necesita MSAA activo en
+`project.godot` para que `alpha_to_coverage` realmente antialiase el recorte.
+
+### Por qué el gradiente sale de VERTEX.y y no de UV
+
+`grass_blade_single` **no tiene UV** — medido con `surface_get_format()`, sin
+`ARRAY_FORMAT_TEX_UV`. Renderizada con el shader del atlas samplea en (0,0),
+obtiene alfa 0 y descarta todo: se dibuja **invisible** pagando igual el costo
+de vértices, y sin un solo error en consola. Ya costó una sesión entera de
+mediciones falsas y volvió a aparecer apenas alguien cambió `blade_asset_path`
+desde el editor — de ahí el `push_warning` de
+`_warn_if_alpha_mode_on_uvless_mesh()`.
+
+La altura local del vértice es lo único que funciona para esa malla. La
+matemática de viento es idéntica en los dos shaders a propósito: cambiar de
+material no tiene que cambiar también el movimiento.
+
+### La trampa de `Terrain3DAssets.set_mesh_asset()`
+
+Llamarla por segunda vez con un objeto recién instanciado **no preserva el id
+de esa entrada**, ni pasando el índice correcto del array ni el id real de la
+entrada existente. Sin llamar antes `mesh_asset.set_id(existing_id)`, reasigna
+en silencio el objeto nuevo a un id ya usado y **corrompe una entrada
+distinta**. Encontrado con sondas empíricas mientras se escribía
+`test/unit/test_grass_terrain_instancer.gd`.
+
+Importa más ahora que el tuneo en vivo desde el Inspector llama `rebuild()`
+—y por lo tanto `_register_mesh_asset()`— muchas veces por sesión en vez de una
+vez por `_ready()`.
+
+Relacionado: nunca mutar una entrada ya registrada en el lugar. Ese camino
+dispara la regeneración de thumbnails del Asset Dock de Terrain3D, que necesita
+un viewport real y falla en cualquier contexto headless.
+
+### Dispersión de briznas: descartar, no recortar
+
+Los puntos fuera de `field_radius` se **descartan**. El código viejo usaba
+`Vector2.limit_length()`, que *proyecta* el punto sobre la circunferencia en vez
+de tirarlo: cada brizna que hubiera caído afuera se apilaba exactamente en ese
+radio. El usuario lo encontró jugando (2026-08-16, anillo brillante de pasto
+extra-denso justo en el borde del campo). Test de regresión:
+`test_positions_do_not_pile_up_at_the_field_radius_boundary`.
+
+Y los centros de mata se samplean uniformes **en área**
+(`sqrt(randf()) * field_radius`, no `randf() * field_radius`), o se amontonarían
+hacia el origen.
+
+`Transform3D.scaled_local()`, no `scaled()`: la segunda también escala el
+origen, y corre la raíz de cada brizna fuera del punto de suelo que se muestreó.

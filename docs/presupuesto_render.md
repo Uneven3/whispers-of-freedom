@@ -8,6 +8,68 @@ técnicas — para el historial de cómo se llegó acá ver
 Regla de uso: cuando algo no entra, **se recorta contenido, no se sube el
 presupuesto**. Si el presupuesto se sube, se sube acá, con fecha y motivo.
 
+## Densidad de pasto: la curva es en U (2026-08-20)
+
+Medido en `terrain_valley.tscn` a 1920x1080, radio de campo 60 m, pasto opaco,
+cámara en el spawn del jugador. **La escena entera**, no el delta del pasto:
+
+| briznas | por m² | frame | overdraw medio | capas máx |
+|---|---|---|---|---|
+| 16 000 | 1,4 | 8,46 ms | 0,62 | 12,1 |
+| 48 000 | 4,2 | 6,77 ms | 0,83 | 15,1 |
+| 96 000 | 8,5 | **5,82 ms** | 1,14 | 22,0 |
+| 192 000 | 17,0 | **5,41 ms** ← mínimo | 1,76 | 25,3 (satura) |
+| 384 000 | 34,0 | 6,04 ms | 2,98 | 25,3 (satura) |
+
+**Más pasto sale más barato, hasta las ~192 000.** Cada brizna opaca ocluye
+píxeles del shader caro de `Terrain3DMaterial` vía Early-Z, y hasta ese punto
+lo que ahorra supera lo que cuesta. Pasado el mínimo, el overdraw gana.
+
+**Adoptado: 96 000 (8,5 briznas/m²)**, no el mínimo. A 192 000 el instrumento
+de overdraw ya satura (25,3 capas es su techo, no una medición) y hay 9,6% del
+pasto con 8+ capas — el margen para lo que todavía no existe importa más que
+los 0,41 ms.
+
+La misma densidad se aplicó a `terrain_base.tscn` (10 700 sobre radio 20).
+
+## Agua: las dos variantes cuestan lo mismo (2026-08-20)
+
+| viewpoint | estilizada | Wind Waker |
+|---|---|---|
+| spawn del jugador (el agua casi no entra en cuadro) | 5,81 ms | 5,82 ms |
+| **parado en la orilla del lago** | **11,81 ms** | **11,63 ms** |
+
+La primera fila no informa nada: desde el spawn el lago está a ~200 m y ocupa
+unos pocos píxeles. **El peor caso de la escena es mirar el lago, no estar
+parado en el pasto** — mirando agua abierta no hay pasto que ocluya y se paga
+el terreno entero.
+
+La elección entre las dos es estética: 0,18 ms de diferencia.
+
+**Niebla de perspectiva aérea: +0,48 ms** (5,81 → 6,29) en el valle. Cuatro
+veces lo que costó en `terrain_base` (+0,12 ms), porque el valle tiene mucha
+más geometría lejana.
+
+
+## Medido y descartado — no volver a probarlo
+
+**Normal map horneado desde el albedo del suelo** (2026-08-21). Probado a
+fuerza Sobel 4,0 y 1,2. Las dos veces el terreno lejano chispea: el relieve
+cae por debajo del tamaño del píxel y no hay nada que lo filtre — la misma
+clase de problema que tenía el ruido procedural del agua. De cerca no gana
+casi nada, porque el relieve de `painterly-meadow-grass-002` está *pintado* y
+ya hace ese trabajo. Si alguna vez se retoma, hace falta antialiasing
+especular (subir rugosidad con el nivel de mip), no bajar la fuerza.
+
+**Agua transparente por defecto.** Medido 1,98x, y con refracción 2,26x
+(prueba sintética, ver `AHORA.md`). A diferencia del pasto, el agua no se
+puede ralear ni alejar: un lago cubre lo que cubre.
+
+**Comparar colores por albedo crudo.** El pasto es `unshaded` y el terreno
+está iluminado, así que comparar albedo contra albedo mide lo que no es.
+Sobre píxeles renderizados el escalón pasto/suelo es de **+10,9% de
+luminancia**, no el 2x que sugería el albedo.
+
 ## Estado, al 2026-08-20
 
 `terrain_base.tscn` a 1080p60: **8,53 ms de 16,67**, con 4,64 ms de

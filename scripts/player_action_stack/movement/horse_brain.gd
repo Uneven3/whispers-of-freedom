@@ -1,9 +1,7 @@
 extends Node
 
-## Minimal Brain for the graybox horse demo. Independent world-space controls so it
-## does not compete with the player's WASD:
-##   I/K — forward/back, J/L — strafe, U — jump, O — sprint.
-## No forms/combat. Replaceable by a future AIBrain.
+## Brain del caballo de graybox. Controles propios para no competir con WASD:
+## I/K adelante-atrás, J/L strafe, U salto, O sprint. Sin formas ni combate.
 
 func _ready() -> void:
 	set_process(false)

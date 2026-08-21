@@ -1,3 +1,10 @@
 [gd_resource type="Terrain3DAssets" format=3]
 
+[ext_resource type="Texture2D" path="res://art/blender/grass/painterly-meadow-grass-002.png" id="1_rkb42"]
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_wugo0"]
+name = "Painterly Meadow Grass"
+albedo_texture = ExtResource("1_rkb42")
+
 [resource]
+texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_wugo0")])

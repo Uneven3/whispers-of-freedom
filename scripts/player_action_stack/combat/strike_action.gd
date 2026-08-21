@@ -24,12 +24,8 @@ func _ready() -> void:
 func is_in_progress() -> bool:
 	return _strike_in_progress or _strike_cooldown > 0.0
 
-## Only true mid-dash — unlike is_in_progress(), doesn't include the
-## post-swing cooldown window. CombatBroker uses this (not is_in_progress())
-## to decide whether Strike gets exclusive routing this frame, so a same-frame
-## bow release/other action during pure cooldown isn't silently dropped —
-## is_in_progress() staying true through cooldown is intentional for its own
-## purpose (a fresh press shouldn't interrupt a cooldown already started).
+## Sólo durante el dash; is_in_progress() además incluye el enfriamiento.
+## Por qué son dos: docs/movimiento.md, "Arbitraje de combate".
 func is_active() -> bool:
 	return _strike_in_progress
 
@@ -63,11 +59,8 @@ func tick(intents: Intents, delta: float, broker: Node) -> void:
 		if _strike_cooldown <= 0:
 			cb.set_combat_state(&"idle")
 		else:
-			# Still cooling down — a queued press falls through to the fresh-
-			# swing check below only once the cooldown actually clears. Without
-			# this branch, a press landing on the exact frame the cooldown hits
-			# zero was dropped: is_action_just_pressed is one-shot, so the same
-			# input is gone next frame and the player has to press again.
+			# Sin esta rama se pierde la pulsación que cae justo en el frame en
+			# que el enfriamiento llega a cero: just_pressed es de un disparo.
 			if intents.wants_attack:
 				return
 

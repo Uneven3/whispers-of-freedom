@@ -1,11 +1,9 @@
 class_name Ladder
 extends Area3D
 
-## Authored marker for a ladder. Exposes top/bottom anchor points to
-## LadderService / LadderMotor.
-##
-## The Area3D is a TRIGGER ONLY — set collision_layer = 0, collision_mask = 2
-## (player Body layer). The actual ladder collider (if any) is a sibling.
+## Marcador de escalera para LadderService / LadderMotor.
+## El Area3D es SÓLO TRIGGER: collision_layer = 0, collision_mask = 2. El
+## collider real, si lo hay, es un hermano.
 
 @onready var bottom_marker: Node3D = $BottomMarker
 @onready var top_marker: Node3D = $TopMarker

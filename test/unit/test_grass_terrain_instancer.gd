@@ -121,8 +121,8 @@ func test_positions_do_not_pile_up_at_the_field_radius_boundary():
 ## even the existing entry's own real id) does not reliably preserve that
 ## entry's id unless mesh_asset.set_id() is called on it first -- without
 ## that, it silently reassigns the new object to an unrelated, already-used
-## id, corrupting a different entry (see _register_mesh_asset()'s doc
-## comment for the empirical probes that found this and the fix). Both
+## id, corrupting a different entry (docs/pasto_godot.md, "Referencia:
+## los dos shaders y el instancer", tiene las sondas que lo encontraron). Both
 ## matter now that live Inspector tuning calls rebuild() (and therefore
 ## _register_mesh_asset()) many times per session instead of once per
 ## _ready(). Deliberately does not go through rebuild() itself or

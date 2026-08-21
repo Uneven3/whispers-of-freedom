@@ -17,10 +17,8 @@ func _input(event: InputEvent) -> void:
 		_is_active = !_is_active
 
 func _on_locomotion_state_changed(_old_mode: int, new_mode: int) -> void:
-	# Reset climb toggle if we mantle, perform an edge leap, or auto-vault over an obstacle.
-	# JUMP is intentionally excluded: a floor jump from a climbable wall should not erase
-	# the player's climb intention — the toggle persists so ClimbMotor can re-engage
-	# immediately on the next wall contact.
+	# JUMP queda excluido a propósito: saltar desde el piso estando en una
+	# pared trepable no debe borrar la intención de trepar.
 	if new_mode == LocomotionState.ID.MANTLE \
 	or new_mode == LocomotionState.ID.EDGE_LEAP \
 	or new_mode == LocomotionState.ID.AUTO_VAULT:

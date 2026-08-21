@@ -1,25 +1,8 @@
 extends SceneTree
 
-## Informe de render de una escena, contra el presupuesto de
-## docs/presupuesto_render.md. Reemplaza al viejo tools/render_budget_probe.gd
-## (mismas fases de ms, más overdraw, costo de sombras y conteos por pase).
-##
-## NECESITA PANTALLA REAL, no --headless: bajo el driver dummy nada se
-## rasteriza, los GPU ms dan 0 y los conteos dan 0. Por eso esto es un tool
-## y no un test de GUT. Ver tools/measure/README.md.
-##
-##   godot --path . --resolution 1920x1080 -s tools/measure/scene_report.gd
-##   godot --path . --resolution 1920x1080 -s tools/measure/scene_report.gd -- --grass=opaque
-##
-## Argumentos (después de `--`):
-##   --scene=res://...   escena a medir (default: scenes/terrain_base.tscn)
-##   --grass=opaque|alpha fuerza el material_mode del GrassInstancer
-##   --png=/ruta         dónde guardar la captura de overdraw
-##   --play              no mide: deja la escena corriendo para jugarla
-##
-## La resolución importa: la escena es fill-bound (ms ≈ 2,1 + 6,4 x
-## megapíxeles), así que medir en ventana chica subestima el costo. 1920x1080
-## es la resolución objetivo declarada en el presupuesto.
+## Informe de render de una escena. Uso, argumentos y trampas ya resueltas:
+## tools/measure/README.md.
+## NO corre con --headless: el driver dummy no rasteriza y todo da 0.
 
 const FrameMetrics := preload("res://tools/measure/frame_metrics.gd")
 const OverdrawProbe := preload("res://tools/measure/overdraw_probe.gd")
@@ -71,13 +54,8 @@ func _collect_lights(node: Node) -> void:
 	for child in node.get_children():
 		_collect_lights(child)
 
-## Pone el GrassInstancer de producción en modo opaco, ANTES de que la
-## escena entre al árbol: si se hiciera después, su _ready() ya habría
-## plantado las instancias con el material viejo.
-##
-## Antes esto reemplazaba el nodo por una subclase instrumental. Ya no hace
-## falta: TerrainGrassInstancer tiene material_mode propio, así que la
-## herramienta mide exactamente el código que se shipea, no un primo suyo.
+## Tiene que correr ANTES de que la escena entre al árbol: después, _ready()
+## ya plantó las instancias con el material viejo.
 func _configure_grass(root_node: Node) -> void:
 	var grass := _find(
 		func(n): return n.name == "GrassInstancer" and n.get_script() != null,
@@ -95,13 +73,38 @@ func _configure_grass(root_node: Node) -> void:
 	if _args.has("count"):
 		grass.blade_count = int(_args["count"])
 
-## Espera a que el motor termine de compilar pipelines antes de medir.
-##
-## Un shader nuevo se compila la primera vez que se dibuja, y eso estanca el
-## frame -- medido: la escena del valle daba 2 fps y 581 ms de CPU en la
-## primera fase, y 101 fps apenas terminaba de compilar. Un warmup de N
-## frames fijo no alcanza, porque no se sabe cuantos frames tarda. Hay que
-## esperar a que el contador deje de subir.
+
+## Cambia el shader de las mallas de agua sin tocar la escena. Mismo criterio
+## que _configure_grass: mide el material que se shipea, no un primo suyo.
+func _configure_water(root_node: Node) -> void:
+	var variant: String = _args.get("water", "")
+	if variant == "":
+		return
+	const SHADERS := {
+		"stylized": "res://scripts/world/water_stylized.gdshader",
+		"windwaker": "res://scripts/world/water_windwaker.gdshader",
+	}
+	if not SHADERS.has(variant):
+		push_warning("scene_report: --water=%s no existe (stylized|windwaker)" % variant)
+		return
+	var shader: Shader = load(SHADERS[variant])
+	var changed := 0
+	for node in _find_all(func(n): return n is MeshInstance3D and n.material_override is ShaderMaterial, root_node):
+		(node.material_override as ShaderMaterial).shader = shader
+		changed += 1
+	print("agua: %d mallas con shader '%s'" % [changed, variant])
+
+
+func _find_all(predicate: Callable, node: Node) -> Array[Node]:
+	var found: Array[Node] = []
+	if predicate.call(node):
+		found.append(node)
+	for child in node.get_children():
+		found.append_array(_find_all(predicate, child))
+	return found
+
+## Un warmup de N frames fijo no alcanza: no se sabe cuántos tarda en
+## compilar. Hay que esperar a que el contador deje de subir (ver README).
 func _await_pipelines_settled() -> void:
 	var last := -1
 	var stable := 0
@@ -152,12 +155,9 @@ func _main() -> void:
 	var world := packed.instantiate()
 	var grass_mode: String = _args.get("grass", "escena")
 	_configure_grass(world)
+	_configure_water(world)
 	root.add_child(world)
 
-	# --play: no mide nada, sólo deja la escena corriendo para jugarla. Es la
-	# única forma de VER el pasto opaco sin tocar código de producción --
-	# §17: un mecanismo no se valida porque los números den bien, se valida
-	# jugándolo.
 	if _args.has("play"):
 		print("modo --play: escena corriendo con pasto '%s'. Cerrar la ventana para salir." % grass_mode)
 		return
@@ -178,11 +178,8 @@ func _main() -> void:
 	results.append(full)
 
 	# --- Fase 2: sin sombras ---
-	# El costo del pase de sombras se mide por DELTA de ms, no por el conteo
-	# de primitivas del pase SHADOW: el pase de sombra es depth-only y cuesta
-	# muchísimo menos por primitiva que el pase de color. Inferir ms desde
-	# conteos es exactamente la falacia que este proyecto ya descartó
-	# (docs/presupuesto_render.md: "no somos vertex-bound").
+	# Por DELTA de ms, no por el conteo del pase SHADOW: es depth-only y
+	# cuesta mucho menos por primitiva que el pase de color.
 	var shadow_states := []
 	for light in _lights:
 		shadow_states.append(light.shadow_enabled)
@@ -251,13 +248,6 @@ func _report(scene_path: String, grass_mode: String, calibration: Dictionary,
 	print(_line("terreno", terrain, BUDGET["terreno"]))
 	print(_line("pasto", grass, BUDGET["pasto"]))
 	if grass < 0.0:
-		# No es un error de medicion. El pasto opaco se dibuja antes que el
-		# terreno (los opacos se ordenan de adelante hacia atras), asi que
-		# Early-Z descarta los pixeles de terreno que quedan detras y el caro
-		# shader de Terrain3DMaterial nunca corre ahi. Si tapa mas de lo que
-		# cuesta, el saldo da negativo: agregar pasto sale GRATIS y ademas
-		# ahorra. Con alfa el signo se invierte, porque sin Early-Z el terreno
-		# de atras se sombrea igual -- ese cambio de signo es la evidencia.
 		print("        (negativo y no es un bug: el pasto opaco ocluye terreno")
 		print("         mas caro del que cuesta. Ver README, seccion de oclusion.)")
 	print(_line("base (cielo/luz/player/UI)", base, BUDGET["base (cielo/luz/player/UI)"]))

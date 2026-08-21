@@ -36,12 +36,8 @@ func configure(
 	_projectile_parent = projectile_parent
 	_movement_broker = movement_broker
 
-## Single character, full moveset — every action is always available, so this
-## picks exactly one to run per frame instead of relying on tick order:
-## an in-progress strike always resolves first (never interrupted mid-swing),
-## then aim/bow, then takedown, then parry, then a fresh strike. Without this,
-## e.g. releasing an aimed shot (wants_archery_release) also sets wants_attack
-## true the same frame and would double as a melee swing.
+## Elige exactamente una acción por frame en vez de depender del orden de
+## tick. El orden y por qué: docs/movimiento.md, "Arbitraje de combate".
 func tick(intents: Intents, delta: float) -> void:
 	if not intents:
 		return

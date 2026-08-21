@@ -1,22 +1,10 @@
 extends RefCounted
 
-## Muestreo por frame de las metricas de render de un viewport.
-## Helper compartido por las herramientas de tools/measure/ para que no
-## dupliquen el muestreo ni la estadistica.
-##
-## NECESITA PANTALLA REAL. Bajo --headless el driver dummy no rasteriza:
-## los GPU ms dan 0 y los conteos dan 0. Ver tools/measure/README.md.
-##
-## Uso:
-##   var m = preload("res://tools/measure/frame_metrics.gd").new()
-##   m.start(get_tree().root.get_viewport_rid())
-##   ... cada frame: m.sample()
-##   var r = m.report()   # dict de series -> {mediana, p95, min, max}
-##   m.reset()            # para empezar otra fase
+## Muestreo por frame de las métricas de render de un viewport, compartido
+## por tools/measure/. No corre con --headless. Uso: tools/measure/README.md.
 
-## Mediana y percentil, no promedio: un solo frame de compilacion de
-## pipeline (Performance.PIPELINE_COMPILATIONS_*) ensucia el promedio de
-## una serie corta y no representa el estado estable.
+## Mediana y percentil, no promedio: un solo frame de compilación de
+## pipeline ensucia el promedio de una serie corta.
 
 const INFO_TYPES := {
 	RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE: "visible",

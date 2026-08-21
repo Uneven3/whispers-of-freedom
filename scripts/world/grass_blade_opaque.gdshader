@@ -1,37 +1,13 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 
-// Pasto OPACO: la técnica para la capa de mayor densidad.
-// Par de scripts/world/grass_blade.gdshader (el de tarjeta con atlas y
-// alfa), elegido desde TerrainGrassInstancer.material_mode.
-//
-// POR QUÉ SON DOS ARCHIVOS Y NO UN UNIFORM: `alpha_to_coverage` es un
-// render_mode, o sea que se fija al compilar el shader. No hay forma de
-// apagarlo por material en runtime, así que la variante opaca tiene que
-// ser un shader aparte.
-//
-// POR QUÉ OPACO: medido en este proyecto, con la geometría fija y la misma
-// cantidad de instancias, el alfa cuesta entre 18x y 25x más -- pierde
-// Early-Z, así que cada capa superpuesta se sombrea igual. La versión
-// opaca además cubre MÁS píxeles, porque no recorta nada. En la escena
-// real: 5,01 ms contra 2,34 ms, y el overdraw baja de 12,92 capas
-// promedio (con el 10% de la pantalla saturando el instrumento) a 1,40.
-// Tablas completas en docs/presupuesto_render.md.
-//
-// EL GRADIENTE SALE DE VERTEX.y, NO DE UV, y eso no es una preferencia:
-// grass_blade_single NO TIENE UV (medido: surface_get_format() sin
-// ARRAY_FORMAT_TEX_UV). Renderizada con el shader del atlas samplea en
-// (0,0), obtiene alfa 0 y descarta todo -- se dibuja invisible pagando el
-// costo de vértices. La altura local del vértice es lo único que funciona
-// para esa malla.
-//
-// La matemática de viento es idéntica a la de grass_blade.gdshader a
-// propósito: así cambiar de material no cambia también el movimiento.
+// Pasto opaco, la técnica de la capa densa. Por qué opaco, por qué es un
+// archivo aparte de grass_blade.gdshader y por qué el gradiente sale de
+// VERTEX.y: docs/pasto_godot.md, "Referencia: los dos shaders y el instancer".
 
 uniform vec4 blade_color : source_color = vec4(0.22, 0.42, 0.18, 1.0);
 uniform vec4 tip_color : source_color = vec4(0.55, 0.68, 0.30, 1.0);
-// Altura de la malla en metros, para normalizar el gradiente.
-// grass_blade_single mide 1,06; grass_billboard_clump mide 1,04.
+// Altura de la malla en metros. grass_blade_single mide 1,06.
 uniform float blade_height = 1.0;
 uniform float wind_speed = 1.6;
 uniform float wind_strength = 0.35;

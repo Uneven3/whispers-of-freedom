@@ -2,17 +2,10 @@
 class_name TerrainGrassInstancer
 extends Node3D
 
-## Places textured billboard grass on Terrain3D via its native foliage
-## instancer (Terrain3DInstancer/Terrain3DAssets). Full history and the
-## empirical findings behind each decision below: docs/pasto_godot.md.
-##
-## Live-tunable @tool: each @export debounces into one deferred rebuild(),
-## guarded by _ready_done so scene deserialization doesn't fire N rebuilds.
-## visible wires into rebuild() directly -- the grass lives in Terrain3D's
-## own MultiMeshInstance3D nodes, not as children here, so Node3D's own
-## visibility has no effect otherwise.
+## Planta pasto en Terrain3D vía su instancer nativo (docs/pasto_godot.md).
+## `visible` va a rebuild() directo: el pasto vive en nodos de Terrain3D, no
+## como hijos de acá, así que la visibilidad de este Node3D no lo afecta.
 
-## Node implementing the Terrain3D class (has get_assets()/get_instancer()/get_data()).
 const MATERIAL_ATLAS_ALPHA := 0
 const MATERIAL_OPAQUE := 1
 
@@ -29,17 +22,9 @@ const MATERIAL_OPAQUE := 1
 		card_texture_path = value
 		_queue_rebuild()
 
-## Qué shader usa el pasto. `alpha_to_coverage` es un render_mode, o sea que
-## se fija al compilar, así que la variante opaca es un shader aparte y no
-## un uniform -- ver el encabezado de grass_blade_opaque.gdshader.
-##
-## OPAQUE es la técnica correcta para la capa densa, medido: con la
-## geometría fija el alfa cuesta entre 18x y 25x más porque pierde Early-Z,
-## y encima cubre menos píxeles (docs/presupuesto_render.md).
-##
-## ATLAS_ALPHA sólo sirve para mallas CON UV. grass_blade_single no tiene,
-## así que con ATLAS_ALPHA se renderiza invisible (samplea el atlas en
-## (0,0), alfa 0, descarta todo) -- de ahí la advertencia de _validate().
+## OPAQUE es la técnica de la capa densa: el alfa cuesta 18x-25x más.
+## ATLAS_ALPHA sólo sirve para mallas CON UV; sobre una sin UV el pasto se
+## renderiza invisible. Medidas y detalle: docs/pasto_godot.md.
 @export_enum("atlas_alpha", "opaque") var material_mode: int = MATERIAL_ATLAS_ALPHA:
 	set(value):
 		material_mode = value
@@ -158,15 +143,9 @@ func rebuild() -> void:
 	var generated := _generate_instance_data(data, global_position)
 	instancer.add_transforms(mesh_id, generated.transforms, generated.colors, true)
 
-## Pure/testable on purpose: Terrain3DInstancer.add_transforms() can't run
-## under GUT's headless dummy renderer, but assets.set_mesh_asset() can.
-##
-## Builds a brand-new Terrain3DMeshAsset and sets its properties before
-## registering it, never mutates an already-registered entry in place --
-## that path triggers Terrain3D's Asset Dock thumbnail regen, which needs a
-## real viewport and errors under any headless context. Overwriting an
-## existing id requires mesh_asset.set_id(existing_id) first, or
-## set_mesh_asset() silently reassigns id 0 and corrupts an unrelated entry.
+## Nunca muta una entrada ya registrada en el lugar, y pisar un id existente
+## exige set_id() antes o set_mesh_asset() corrompe otra entrada en silencio.
+## Las dos trampas, con las sondas que las encontraron: docs/pasto_godot.md.
 func _register_mesh_asset(assets, mesh_name: String, base_scene: PackedScene) -> int:
 	var mesh_asset = ClassDB.instantiate("Terrain3DMeshAsset")
 	mesh_asset.set_name(mesh_name)
@@ -203,14 +182,8 @@ func _build_shader_material() -> ShaderMaterial:
 	mat.set_shader_parameter("base_fade_height", base_fade_height)
 	return mat
 
-## Pure/testable, same reasoning as _register_mesh_asset(): only depends on
-## Terrain3DData.get_height(), which works headless.
-##
-## Clump centers sampled uniform-in-area (sqrt(randf()) * field_radius, not
-## randf() * field_radius, or centers would bunch toward the origin).
-## Blades scatter around a random clump with gaussian falloff, clamped to
-## field_radius. origin is added so the instancer's own scene position
-## becomes the field's center.
+## Centros de mata uniformes EN ÁREA (sqrt(randf()), no randf()) o se
+## amontonarían hacia el origen. Testeable: sólo depende de get_height().
 func _generate_instance_data(terrain_data, origin: Vector3) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 12345
@@ -226,15 +199,15 @@ func _generate_instance_data(terrain_data, origin: Vector3) -> Dictionary:
 	for i in blade_count:
 		var center: Vector2 = clumps[rng.randi_range(0, clumps.size() - 1)]
 		var offset := Vector2(rng.randfn(0.0, clump_spread), rng.randfn(0.0, clump_spread))
-		var pos2d: Vector2 = center + offset
-		if pos2d.length() > field_radius:
+		var offset_from_center: Vector2 = center + offset
+		if offset_from_center.length() > field_radius:
 			# Discard rather than limit_length() onto the boundary, which
 			# would pile every out-of-bounds point exactly onto the edge.
 			continue
-		var world_x := origin.x + pos2d.x
-		var world_z := origin.z + pos2d.y
-		var h: float = terrain_data.get_height(Vector3(world_x, 0.0, world_z))
-		if is_nan(h):
+		var world_x := origin.x + offset_from_center.x
+		var world_z := origin.z + offset_from_center.y
+		var ground_height: float = terrain_data.get_height(Vector3(world_x, 0.0, world_z))
+		if is_nan(ground_height):
 			continue  # outside sculpted regions
 
 		var blade_scale := rng.randf_range(min_scale, max_scale)
@@ -242,11 +215,11 @@ func _generate_instance_data(terrain_data, origin: Vector3) -> Dictionary:
 		var tilt := rng.randf_range(-0.12, 0.12)
 		# scaled_local(), not scaled() -- the latter also scales the origin,
 		# drifting each blade's root position off its sampled ground point.
-		var xf := Transform3D(
+		var blade_transform := Transform3D(
 			Basis(Vector3(0, 1, 0), rot_y) * Basis(Vector3(1, 0, 0), tilt),
-			Vector3(world_x, h, world_z)
+			Vector3(world_x, ground_height, world_z)
 		).scaled_local(Vector3(blade_scale, blade_scale, blade_scale))
-		transforms.append(xf)
+		transforms.append(blade_transform)
 
 		var height_frac := (blade_scale - min_scale) / maxf(max_scale - min_scale, 0.001)
 		colors.append(Color(rng.randf_range(0.0, 1.0), height_frac, rng.randf_range(0.0, 1.0), 0.0))
@@ -267,15 +240,9 @@ func _build_opaque_material() -> ShaderMaterial:
 	return mat
 
 
-## El shader del atlas usa tex.a como ALPHA, así que una malla sin UV
-## samplea en (0,0), obtiene alfa 0 y se descarta entera: el pasto se
-## dibuja INVISIBLE, pagando igual el costo de vértices y sin un solo
-## error en consola. Ya nos costó una sesión entera de mediciones falsas
-## (docs/presupuesto_render.md, "Bug encontrado midiendo") y volvió a
-## aparecer apenas alguien cambió blade_asset_path en el editor.
-##
-## push_warning y no assert (§5): lo dispara un dato que un diseñador puede
-## producir desde el Inspector, no un invariante de programador.
+## Una malla sin UV con el shader del atlas se dibuja INVISIBLE, pagando
+## igual el costo de vértices y sin un solo error en consola.
+## push_warning y no assert (§5): lo dispara un dato del Inspector.
 func _warn_if_alpha_mode_on_uvless_mesh(base_scene: PackedScene) -> void:
 	if material_mode != MATERIAL_ATLAS_ALPHA:
 		return

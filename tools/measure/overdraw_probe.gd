@@ -1,32 +1,11 @@
 extends RefCounted
 
-## Cuantifica overdraw (cuantas veces se sombrea cada pixel) leyendo el modo
-## de depuracion OVERDRAW del propio motor y contando capas.
-##
-## El proyecto venia dando esto por imposible -- docs/AHORA.md decia que
-## "Overdraw es visual, no scripteable". Es falso:
-## RenderingServer.viewport_set_debug_draw(rid, VIEWPORT_DEBUG_DRAW_OVERDRAW)
-## se puede activar por script, y el framebuffer resultante se puede leer.
-##
-## NECESITA PANTALLA REAL y build de debug. El modo OVERDRAW es el unico
-## debug_draw que no funciona en builds de release.
-##
-## COMO FUNCIONA: en modo overdraw el motor dibuja todo con blend aditivo y
-## un incremento fijo por capa. Sumando capas, el valor de un pixel es
-## (capas x incremento). El readback viene codificado en sRGB, asi que hay
-## que linealizarlo antes de dividir -- sin eso, 2 capas parecen 1,4.
-##
-## LIMITE DURO -- SATURACION: el incremento por capa lo fija el motor y no
-## es configurable. Con ~0,04 en lineal por capa, el buffer se clava en 1,0
-## alrededor de las 25 capas y a partir de ahi 26 capas y 200 capas son
-## indistinguibles. Justo la zona de pasto denso es donde eso pasa, asi que
-## esta herramienta SIEMPRE reporta el % de pixeles saturados: si ese
-## numero no es ~0, el promedio y el maximo estan subestimados y no se
-## deben citar como si fueran la medicion.
+## Cuantifica overdraw contando capas sobre el modo OVERDRAW del motor.
+## Cómo funciona, el techo de saturación (~25 capas) y por qué el readback
+## hay que linealizar: tools/measure/README.md. Necesita build de debug.
 
 const SATURATION_EPSILON := 0.002
-## Tamano del viewport de calibracion. Chico a proposito: sólo hace falta
-## que entre el quad, y la lectura es por CPU.
+## Chico a propósito: sólo tiene que entrar el quad y la lectura es por CPU.
 const CALIBRATION_SIZE := Vector2i(64, 64)
 
 var _srgb_to_linear: PackedFloat32Array = PackedFloat32Array()
@@ -41,10 +20,9 @@ func _init() -> void:
 			c / 12.92 if c <= 0.04045
 			else pow((c + 0.055) / 1.055, 2.4))
 
-## Estado del viewport y del Environment que hay que forzar para medir, y
-## restaurar despues. Sin restaurar, una fase posterior mediria GPU ms con
-## el debug draw puesto en OVERDRAW -- un pase mucho mas barato que el
-## shading real, o sea un numero creible y falso.
+## Sin restaurar, una fase posterior mediría GPU ms con el debug draw en
+## OVERDRAW: un pase mucho más barato que el shading real, o sea un número
+## creíble y falso.
 class ViewportState extends RefCounted:
 	var debug_draw: int
 	var msaa_3d: int
@@ -60,10 +38,8 @@ func apply(viewport: Viewport, env: Environment, tree: SceneTree = null) -> View
 	state.msaa_3d = viewport.msaa_3d
 	state.environment = env
 
-	# El debug draw NO afecta a los CanvasLayer: el DebugOverlay (autoload,
-	# F1) se dibuja encima de la escena 3D y sus pixeles de texto entran al
-	# histograma como si fueran capas de geometria. Verificado mirando la
-	# captura, no deducido. Se ocultan para medir y se restauran despues.
+	# El debug draw NO afecta a los CanvasLayer: los píxeles del DebugOverlay
+	# entran al histograma como si fueran capas de geometría.
 	if tree != null:
 		_hide_canvas_layers(tree.root, state)
 
@@ -102,10 +78,9 @@ func restore(viewport: Viewport, state: ViewportState) -> void:
 		state.environment.glow_enabled = state.glow_enabled
 		state.environment.adjustment_enabled = state.adjustment_enabled
 
-## Mide cuanto vale UNA capa, en vez de hardcodear la constante: el
-## incremento por capa es un detalle interno del motor y puede cambiar entre
-## versiones. Se calibra en un SubViewport propio para no perturbar la
-## escena que se esta midiendo.
+## Mide cuánto vale UNA capa en vez de hardcodearla: el incremento es un
+## detalle interno del motor. En un SubViewport propio para no perturbar la
+## escena que se está midiendo.
 func calibrate(tree: SceneTree) -> Dictionary:
 	var sub := SubViewport.new()
 	sub.size = CALIBRATION_SIZE

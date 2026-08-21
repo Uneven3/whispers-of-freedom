@@ -26,13 +26,9 @@ func is_on_floor() -> bool:
 func get_floor_normal() -> Vector3:
 	return _body.get_floor_normal()
 
-## Body geometry — single source of truth is the CollisionShape3D on the Body.
-## Motors/Services read half-height and radius from here instead of re-declaring
-## their own @export geometry, so entities with different capsules (mounts,
-## enemies) work without manual per-motor overrides.
-##
-## The CollisionShape3D may be rotated (e.g. a horizontal capsule for a horse),
-## so both extents are computed in world space from the shape's basis.
+## SSoT de la geometría del cuerpo: el CollisionShape3D del Body. La forma
+## puede estar rotada (cápsula horizontal de un caballo), así que las dos
+## extensiones se calculan en espacio de mundo desde su basis.
 
 func get_body_half_height() -> float:
 	var capsule := _get_capsule_shape()

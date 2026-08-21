@@ -64,18 +64,9 @@ func _setup_swing_vfx() -> void:
 	var sphere_mesh := SphereMesh.new()
 	sphere_mesh.radius = 0.08
 	sphere_mesh.height = 0.16
-	# SphereMesh viene por defecto en 64 segmentos x 32 anillos = 4224
-	# triangulos. A radio 0,08 esto ocupa unos pocos pixeles en pantalla, asi
-	# que esa tesela es invisible: 15 particulas x 4224 eran ~63000 triangulos
-	# por golpe. Con 6x3 son 48, o sea ~720.
-	#
-	# OJO CON LO QUE ESTE ARREGLO NO ARREGLA: la escena es fill-bound, no
-	# vertex-bound (docs/presupuesto_render.md), y este material es
-	# TRANSPARENCY_ALPHA, o sea sin Early-Z. Su costo real vive en el
-	# overdraw de esferas superpuestas, no en los triangulos. Esto saca
-	# desperdicio evidente, no es la palanca de rendimiento -- medido, el
-	# delta de GPU ms es despreciable. Si alguna vez hay que abaratarlo de
-	# verdad, las variables son amount, el radio, y recuperar Early-Z.
+	# Saca desperdicio evidente (~63000 triángulos por golpe a ~720), pero NO
+	# es la palanca: el costo real es overdraw, no vértices
+	# (docs/movimiento.md, "Visuales").
 	sphere_mesh.radial_segments = 6
 	sphere_mesh.rings = 3
 	
@@ -140,10 +131,6 @@ func _process(delta: float) -> void:
 	global_position.x = _body.global_position.x
 	global_position.z = _body.global_position.z
 	global_position.y = lerpf(global_position.y, _body.global_position.y + _target_y_offset, interpolation_speed * delta)
-	# orthonormalized() on both sides: Basis.slerp() requires pure rotations
-	# (no scale/skew) and calls get_rotation_quaternion() internally, which
-	# throws if either basis has drifted even slightly. Reassigning `basis`
-	# to its own slerp result every frame accumulates float error over time
-	# until the strict is_rotation() check trips (~80s in on one playtest) —
-	# re-orthonormalizing each frame keeps that drift from ever building up.
+	# orthonormalized() de los dos lados: Basis.slerp() exige rotaciones puras
+	# y el error de punto flotante se acumula hasta que tira (~80 s medidos).
 	basis = basis.orthonormalized().slerp(_body.basis.orthonormalized(), interpolation_speed * delta).orthonormalized()

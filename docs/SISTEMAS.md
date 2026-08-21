@@ -46,6 +46,104 @@ Mecánicas y en `AHORA.md`.
 - **Texturas** — importar con mipmaps + `VRAM Compressed` (Godot elige
   ASTC/ETC2/BPTC según plataforma de export). Nativo, sin pipeline propio.
 
+## Generación de terreno
+
+`tools/worldgen/generate_valley.gd` genera el escenario "valle": un heightmap
+procedural de 1024x1024 m con meseta alta al norte, lago en la meseta y un río
+grande bajando al sur, más las mallas de agua.
+
+```
+godot --headless --path . -s tools/worldgen/generate_valley.gd
+```
+
+Corre headless a propósito: no rasteriza nada, sólo escribe datos.
+
+**Directorio propio, y el script aborta si no lo es.** `world_data/terrain/`
+tiene esculpido a mano y está versionado. Además el `Terrain3D` temporal nunca
+apunta al directorio viejo ni un instante: `save_directory()` guarda *todas*
+las regiones que tenga cargadas, no sólo las modificadas, así que un `Terrain3D`
+que hubiera leído las esculpidas las escribiría también en el escenario nuevo.
+
+**`region_size` por defecto es 256, no 1024.** Sin `change_region_size()` una
+imagen de 1024x1024 se parte en 16 regiones en silencio.
+
+**Verificación sin tests:** este script no lo cubre GUT. La forma de comprobar
+que un cambio no alteró el comportamiento es regenerar y comparar `md5sum` de
+`world_data/terrain_valley/*.res` contra la corrida anterior.
+
+## Agua
+
+Rationale del shader `scripts/world/water_stylized.gdshader` y del generador
+`tools/worldgen/generate_valley.gd`, que por §15 no vive en comentarios.
+
+**Opaca, no transparente.** Medido en este proyecto sobre la misma superficie:
+transparente cuesta 1,98x y con refracción 2,26x (medido sobre un plano
+sintético; ver `AHORA.md`). La
+transparencia pierde Early-Z y la refracción fuerza una copia de pantalla por
+frame. A diferencia del pasto, el agua no se puede ralear ni alejar — un lago
+cubre lo que cubre.
+
+**No `unshaded`,** que es la excepción a la regla del resto del proyecto: el
+reflejo del cielo *es* el especular estándar contra el radiance map que Godot
+genera del `Sky`. Sin evaluación de luz no hay reflejo, y el reflejo es lo que
+hace que el agua se lea como agua. No hace falta `ReflectionProbe`.
+
+**No lee `DEPTH_TEXTURE` ni `SCREEN_TEXTURE`.** La distancia a la orilla es
+dato de generación, no algo que descubrir leyendo buffers: las mallas se
+generan sabiendo dónde está la orilla.
+
+**La normal viene guardada en una textura, no derivada.** La primera versión
+sacaba la normal por diferencia central sobre ruido procedural: eso son cinco
+evaluaciones de ruido por píxel, o **44 `sin()` por fragmento**. Y el ruido
+procedural no tiene mipmaps, así que a distancia aliasaba a puntitos blancos y
+hubo que agregar un fade de detalle — un parche a un problema que la técnica se
+causaba sola. Con una `NoiseTexture2D` (`as_normal_map = true`, `seamless`) son
+dos lecturas filtradas, los mipmaps aplanan el relieve solos con la distancia, y
+el fade desapareció.
+
+**`water_windwaker.gdshader` es un archivo aparte**, no un uniform: profundidad
+cuantizada en bandas duras, parches de espuma de ruido celular recortados con
+borde, contorno de orilla duro. La diferencia con la estilizada es de técnica,
+no de parámetro — mismo criterio que `grass_blade_opaque.gdshader`.
+
+**Todo en metros, no en UV.** El error original fue parametrizar bandas y ondas
+en UV compartiendo un material entre lago y río: UV.y abarca 98 m en el lago y
+13,5 m en el río, así que una banda de espuma de 0,07 medía 8,8 m en uno y
+0,9 m en el otro. Hoy `uv_to_meters` declara cuántos metros abarca cada eje UV
+de esa malla, y lago y río tienen materiales separados.
+
+**`world_space_noise`.** El río tiene UV.y = 0/1/0 de orilla a orilla, así que
+usar UV como dominio del ruido espeja el patrón sobre el eje del cauce. En
+espacio de mundo no pasa. El costo es que la corriente va en una dirección fija
+del mundo en vez de seguir las curvas.
+
+**Fade de detalle con la distancia.** El ruido procedural no tiene mipmaps, así
+que a distancia cae bajo el píxel y aliasa a puntitos blancos que titilan.
+`detail_fade_*` apaga la perturbación de normal, la espuma y el brillo, y sube
+`ROUGHNESS` a `far_roughness` para que el reflejo deje de espejear.
+
+### Malla del lago
+
+El radio no es constante: `_shore_radius()` marcha desde el centro hasta donde
+el terreno generado cruza `LAKE_LEVEL`, y el borde se mete 1 m pasado el cruce
+para que el terreno recorte el agua justo en la línea de agua. Tres trampas ya
+resueltas, cada una visible como un defecto distinto:
+
+1. **Radio fijo** (`LAKE_RADIUS * 0.93`): el agua quedaba 28 m adentro del
+   cerro por un lado y colgando en el aire por el sur.
+2. **Marcha sin tope**: por el cauce del río el terreno sigue bajo el nivel del
+   lago kilómetros, así que la orilla se iba 60 m canal abajo y salían dos
+   púas. Tope en `LAKE_RADIUS`, y los ángulos sin cruce se tapan con la mediana
+   de los que sí cruzaron.
+3. **Púas de 2-3 muestras** donde el rayo corre por el hombro del cauce: las
+   borra una mediana circular de 5 sobre los radios.
+
+Y la ribera del río se angosta adentro de la cuenca (`bank_reach`): sus 55 m de
+hombro le comían el labio al lago, pero apagarla del todo tapaba el desagüe.
+
+**Defecto conocido:** el borde sur todavía cuelga ~1 m sobre el terreno a los
+costados de la boca del río, donde el terreno queda apenas bajo `LAKE_LEVEL`.
+
 ## VFX y feedback de combate
 
 - **Golpes/chispas/humo** — `GPUParticles3D` pooleado (crear una vez,

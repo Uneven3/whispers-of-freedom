@@ -1,11 +1,9 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, alpha_to_coverage;
 
-// Textured billboard grass card — replaces the old procedural LOD0/1/2
-// system (docs/pasto_godot.md, pivot session, "6 simple tips to improve
-// grass billboards", Kammerbild). alpha_to_coverage needs MSAA active
-// (project.godot) to actually antialias the cutout edge.
-// INSTANCE_CUSTOM: x = wind phase, y = height multiplier, z = wind strength multiplier.
+// alpha_to_coverage necesita MSAA activo (project.godot) para antialiasar
+// el recorte. INSTANCE_CUSTOM: x = fase, y = altura, z = fuerza de viento.
+// Contexto: docs/pasto_godot.md.
 
 uniform sampler2D card_texture : source_color;
 uniform vec4 blade_color : source_color = vec4(0.22, 0.42, 0.18, 1.0);

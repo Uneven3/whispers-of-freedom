@@ -1,20 +1,12 @@
 extends SceneTree
 
-## Genera el escenario "valle": un heightmap procedural de 1024x1024 m con
-## una meseta alta al norte, un lago en la meseta, y un rio grande bajando
-## hasta la parte baja al sur. Deja tambien las mallas de agua (disco del
-## lago y cinta del rio) listas para la escena.
-##
-##   godot --headless --path . -s tools/worldgen/generate_valley.gd
-##
-## Corre headless a proposito: no rasteriza nada, solo escribe datos.
-##
-## POR QUE UN DIRECTORIO PROPIO: world_data/terrain/ tiene esculpido hecho a
-## mano y esta versionado. Este script escribe SOLO a world_data/terrain_valley/
-## y aborta si alguien apunta la salida al directorio viejo.
+## Genera el escenario "valle" (heightmap + mallas de agua). Corrida y
+## rationale: docs/SISTEMAS.md, sección "Generación de terreno".
+## Escribe SOLO a OUT_DIR y aborta si lo apuntan al esculpido a mano.
 
 const OUT_DIR := "res://world_data/terrain_valley"
 const PROTECTED_DIR := "res://world_data/terrain"
+const GROUND_TEXTURE := "res://art/blender/grass/painterly-meadow-grass-002.png"
 
 # region_size por defecto es 256, NO 1024. Sin change_region_size() una
 # imagen de 1024x1024 se parte en 16 regiones de 256 en silencio -- no
@@ -54,6 +46,7 @@ var _noise := FastNoiseLite.new()
 var _curve: PackedVector2Array = PackedVector2Array()
 var _curve_dist: PackedFloat32Array = PackedFloat32Array()
 var _river_length := 0.0
+var _heights := PackedFloat32Array()
 
 
 func _init() -> void:
@@ -77,6 +70,7 @@ func _main() -> void:
 
 	var fields := _build_height_field()
 	var heights: PackedFloat32Array = fields["heights"]
+	_heights = heights
 	print("alturas: min %.1f  max %.1f" % [fields["min"], fields["max"]])
 
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
@@ -87,10 +81,8 @@ func _main() -> void:
 	quit()
 
 
-## Catmull-Rom sobre los puntos de control, remuestreada a paso constante.
-## El paso constante importa: la distancia acumulada es lo que da el
-## parametro 's' con el que baja el fondo del cauce, y con muestras
-## desparejas el rio bajaria a saltos.
+## Remuestreada a paso constante: la distancia acumulada es lo que hace bajar
+## el fondo del cauce, y con muestras desparejas el rio bajaria a saltos.
 func _build_curve() -> void:
 	var raw: PackedVector2Array = PackedVector2Array()
 	var count := RIVER_POINTS.size()
@@ -125,8 +117,8 @@ func _catmull_rom(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: float) 
 ## Altura del fondo del cauce a lo largo del rio. Estrictamente decreciente:
 ## si el fondo subiera en algun tramo, la cinta de agua se veria trepando una
 ## cuesta, que es el error visual mas obvio que puede tener un rio.
-func _channel_bottom(s: float) -> float:
-	var t: float = clampf(s / maxf(_river_length, 1.0), 0.0, 1.0)
+func _channel_bottom(distance_along_river: float) -> float:
+	var t: float = clampf(distance_along_river / maxf(_river_length, 1.0), 0.0, 1.0)
 	return lerpf(LAKE_LEVEL - RIVER_DEPTH, VALLEY_FLOOR - 6.0, sqrt(t))
 
 
@@ -138,12 +130,9 @@ func _terrain_base_height(x: float, z: float) -> float:
 	return base + _noise.get_noise_2d(x, z) * relief
 
 
-## Campo de distancia al rio, por estampado en vez de por busqueda.
-##
-## Lo directo -- para cada uno del millon de puntos del mapa, recorrer las
-## ~350 muestras de la curva -- son 350 millones de operaciones en GDScript.
-## Estampar un cuadrado alrededor de cada muestra y quedarse con el minimo es
-## el mismo resultado con dos ordenes de magnitud menos de trabajo.
+## Por estampado, no por busqueda: recorrer las ~350 muestras de la curva
+## para cada uno del millon de puntos serian 350 millones de operaciones en
+## GDScript. Estampar y quedarse con el minimo da lo mismo, 100x mas barato.
 func _stamp_river_field(dist: PackedFloat32Array, param: PackedFloat32Array) -> void:
 	var reach := int(ceil(RIVER_BANK))
 	for i in _curve.size():
@@ -192,19 +181,23 @@ func _build_height_field() -> Dictionary:
 			var lake_t: float = 1.0 - smoothstep(LAKE_RADIUS * 0.55, LAKE_RADIUS, lake_d)
 			if lake_t > 0.0:
 				# Fondo en cuenco, no plano: el borde sube hacia la orilla.
-				var rim: float = clampf(lake_d / LAKE_RADIUS, 0.0, 1.0)
-				var floor_h: float = LAKE_LEVEL - LAKE_DEPTH * (1.0 - rim * rim)
+				var rim_fraction: float = clampf(lake_d / LAKE_RADIUS, 0.0, 1.0)
+				var floor_h: float = LAKE_LEVEL - LAKE_DEPTH * (1.0 - rim_fraction * rim_fraction)
 				h = lerpf(h, floor_h, lake_t)
 
 			# --- cauce del rio ---
-			var d: float = sqrt(dist[idx])
-			if d < RIVER_BANK:
+			var distance_to_channel: float = sqrt(dist[idx])
+			if distance_to_channel < RIVER_BANK:
 				var bottom := _channel_bottom(param[idx])
-				var u: float = clampf(d / RIVER_HALF_WIDTH, 0.0, 1.0)
+				var across_channel: float = clampf(distance_to_channel / RIVER_HALF_WIDTH, 0.0, 1.0)
 				# Perfil en U dentro del cauce, y mezcla suave hacia el
 				# terreno entre el cauce y el borde de la ribera.
-				var channel: float = bottom + u * u * 2.5
-				var blend: float = 1.0 - smoothstep(RIVER_HALF_WIDTH, RIVER_BANK, d)
+				var channel: float = bottom + across_channel * across_channel * 2.5
+				# Adentro de la cuenca la ribera se angosta en vez de apagarse:
+				# los 55 m de hombro le comian el labio al lago y el agua
+				# quedaba colgando, pero apagarla entera tapaba el desague.
+				var bank_reach: float = lerpf(RIVER_BANK, RIVER_HALF_WIDTH * 1.5, lake_t)
+				var blend: float = 1.0 - smoothstep(RIVER_HALF_WIDTH, bank_reach, distance_to_channel)
 				h = lerpf(h, channel, blend)
 
 			heights[idx] = h
@@ -216,14 +209,9 @@ func _build_height_field() -> Dictionary:
 
 func _write_terrain(heights: PackedFloat32Array) -> void:
 	var terrain: Node = ClassDB.instantiate("Terrain3D")
-	# Nunca se le asigna data_directory viejo: un Terrain3D que cargue las
-	# regiones esculpidas las tendria en memoria, y save_directory() guarda
-	# TODAS las regiones que tenga cargadas, no solo las modificadas -- se
-	# colarian al escenario nuevo.
-	# data_directory apunta al directorio NUEVO desde el principio. Sin
-	# asignarlo, terrain.get("data") devuelve null y no hay donde importar.
-	# Apuntarlo al viejo, aunque fuera un instante, cargaria las regiones
-	# esculpidas a memoria y save_directory() las escribiria tambien aca.
+	# Nunca apuntarlo al directorio esculpido, ni un instante: save_directory()
+	# guarda TODAS las regiones cargadas, no solo las modificadas, y se
+	# colarian aca. Sin asignarlo, get("data") da null y no hay donde importar.
 	terrain.set("data_directory", OUT_DIR)
 	root.add_child(terrain)
 	terrain.call("change_region_size", REGION_SIZE)
@@ -249,6 +237,10 @@ func _write_terrain(heights: PackedFloat32Array) -> void:
 	# ese recurso es compartido por path, y el @tool del instancer de pasto
 	# lo muta en memoria con solo abrir la escena en el editor.
 	var assets: Resource = ClassDB.instantiate("Terrain3DAssets")
+	var ground: Resource = ClassDB.instantiate("Terrain3DTextureAsset")
+	ground.set("name", "Painterly Meadow Grass")
+	ground.set("albedo_texture", load(GROUND_TEXTURE))
+	assets.call("set_texture", 0, ground)
 	var assets_path := OUT_DIR + "/valley_assets.tres"
 	ResourceSaver.save(assets, assets_path)
 	print("assets propios en ", assets_path)
@@ -262,9 +254,63 @@ func _write_water_meshes() -> void:
 	print("mallas de agua escritas")
 
 
-## Disco, no PlaneMesh. El shader saca la orilla y la espuma de UV.y (0 en la
-## orilla, 1 en el centro), y un PlaneMesh solo tiene UV de rectangulo: la
-## espuma saldria en los lados del cuadrado, no en la orilla real del lago.
+func _sampled_height(x: float, z: float) -> float:
+	var xi := clampi(int(round(x)), 0, MAP - 1)
+	var zi := clampi(int(round(z)), 0, MAP - 1)
+	return _heights[zi * MAP + xi]
+
+
+## Radio de la orilla en un angulo: donde el terreno generado cruza
+## LAKE_LEVEL. Antes la malla usaba un radio fijo y quedaba 28 m adentro del
+## cerro por un lado y colgando en el aire por el sur.
+func _shore_radius(angle: float) -> float:
+	var dir := Vector2(cos(angle), sin(angle))
+	var r := 8.0
+	# El tope es el radio de la cuenca, no mas: por el cauce del rio el
+	# terreno sigue bajo el nivel del lago kilometros, y sin tope la orilla
+	# se iba 60 m canal abajo formando dos puas.
+	while r < LAKE_RADIUS:
+		var p: Vector2 = LAKE_CENTER + dir * r
+		if _sampled_height(p.x, p.y) >= LAKE_LEVEL:
+			# Un metro pasado el cruce: el borde queda enterrado y el terreno
+			# recorta el agua justo en la linea de agua, sin juntura visible.
+			return minf(r + 1.0, LAKE_RADIUS)
+		r += 0.5
+	return -1.0
+
+
+## Por la boca del rio no hay orilla que encontrar, y sin tapar ese caso el
+## lago se derrama 60 m valle abajo. La mediana de los angulos que si
+## cruzaron deja el borde donde estaria si la cuenca se cerrara.
+func _shore_radii(segments: int) -> PackedFloat32Array:
+	var radii := PackedFloat32Array()
+	var found: Array[float] = []
+	for i in segments:
+		var r := _shore_radius(TAU * float(i) / float(segments))
+		radii.append(r)
+		if r > 0.0:
+			found.append(r)
+	found.sort()
+	var fallback: float = LAKE_RADIUS * 0.8 if found.is_empty() else found[found.size() / 2]
+	var patched := 0
+	for i in segments:
+		if radii[i] < 0.0:
+			radii[i] = fallback
+			patched += 1
+	# Mediana circular de 5: donde el rayo corre por el hombro del cauce el
+	# cruce aparece 30 m tarde y sale una pua de 2-3 muestras. La mediana la
+	# borra; la forma general del lago, que varia despacio, no se mueve.
+	var smoothed := PackedFloat32Array()
+	for i in segments:
+		var window: Array[float] = []
+		for k in range(-2, 3):
+			window.append(radii[posmod(i + k, segments)])
+		window.sort()
+		smoothed.append(window[2])
+	print("orilla del lago: %d/%d angulos sin cruce, tapados con %.1f m" % [patched, segments, fallback])
+	return smoothed
+
+
 func _build_lake_mesh() -> ArrayMesh:
 	const SEGMENTS := 96
 	var verts := PackedVector3Array()
@@ -277,11 +323,10 @@ func _build_lake_mesh() -> ArrayMesh:
 	uvs.append(Vector2(0.5, 1.0))
 	normals.append(Vector3.UP)
 
+	var radii := _shore_radii(SEGMENTS)
 	for i in SEGMENTS:
 		var a := TAU * float(i) / float(SEGMENTS)
-		# Un pelo mas chico que la cuenca, para que la orilla del agua quede
-		# dentro del terreno tallado y no flotando sobre el borde.
-		var r := LAKE_RADIUS * 0.93
+		var r := radii[i]
 		verts.append(center + Vector3(cos(a) * r, 0.0, sin(a) * r))
 		uvs.append(Vector2(float(i) / float(SEGMENTS), 0.0))
 		normals.append(Vector3.UP)
@@ -314,14 +359,14 @@ func _build_river_mesh() -> ArrayMesh:
 		tangent = tangent.normalized()
 		var side := Vector2(-tangent.y, tangent.x) * RIVER_HALF_WIDTH * 0.9
 		var y := _channel_bottom(_curve_dist[i]) + RIVER_DEPTH * 0.75
-		var u := _curve_dist[i] / 40.0
+		var uv_along_river := _curve_dist[i] / 40.0
 
 		verts.append(Vector3(p.x - side.x, y, p.y - side.y))
-		uvs.append(Vector2(u, 0.0))
+		uvs.append(Vector2(uv_along_river, 0.0))
 		verts.append(Vector3(p.x, y, p.y))
-		uvs.append(Vector2(u, 1.0))
+		uvs.append(Vector2(uv_along_river, 1.0))
 		verts.append(Vector3(p.x + side.x, y, p.y + side.y))
-		uvs.append(Vector2(u, 0.0))
+		uvs.append(Vector2(uv_along_river, 0.0))
 		for n in 3:
 			normals.append(Vector3.UP)
 

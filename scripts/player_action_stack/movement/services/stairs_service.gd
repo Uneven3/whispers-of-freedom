@@ -1,10 +1,8 @@
 class_name StairsService
 extends BaseService
 
-## Tracks which Stairs marker (if any) the body is currently overlapping.
-## Self-wires at _ready by walking the "stairs" group and connecting to each
-## marker's body_entered/body_exited signals. Same pattern any future authored
-## affordance can reuse — broker stays out of scene wiring.
+## Qué marcador Stairs está solapando el cuerpo. Se autocablea recorriendo el
+## grupo "stairs": el broker queda afuera del cableado de escena.
 
 var _active_stair: Stairs = null
 var _body: CharacterBody3D = null

@@ -6,21 +6,13 @@ extends BaseMotor
 @export var min_distance_to_target: float = 1.5   # Offset to prevent clipping into the target's collider
 @export var max_dash_duration: float = 0.25       # Timeout security gate for the dash
 
-## Beats StairsMotor/LadderMotor's unconditional FORCED(0) (was losing ties
-## to them mid-dash, current_mode flipping away from STRIKE) and WallJumpMotor
-## (5), without outranking MantleMotor/EdgeLeapMotor (10) or AutoVaultMotor
-## (20) — those are also "sticky, must finish" motors, and beating them is a
-## real design change (whether a strike interrupts an in-progress vault/mantle),
-## not something this fix is meant to decide.
+## Le gana a Stairs/Ladder (FORCED 0) y WallJump (5) sin pasar a Mantle/
+## EdgeLeap (10) ni AutoVault (20). Por qué ese rango: docs/movimiento.md.
 const STRIKE_PRIORITY_WEIGHT: int = 8
 
-## Safety net: if the FORCED proposal below loses arbitration outright (e.g.
-## to AutoVaultMotor's higher-weight sticky FORCED(20)) rather than winning or
-## tying, tick() never runs — the only place _active normally gets cleared —
-## and _active would otherwise stay true forever, re-proposing every frame
-## until it eventually wins arbitration and snap-dashes toward a stale target
-## with zero player input, possibly seconds later. Counted in frames, not
-## time, since gather_proposals() doesn't receive delta.
+## Red de seguridad: si la propuesta pierde el arbitraje de plano, tick()
+## nunca corre y _active quedaría true para siempre (docs/movimiento.md).
+## En frames y no en tiempo porque gather_proposals() no recibe delta.
 const MAX_PENDING_FRAMES: int = 30
 
 # — Internal state —

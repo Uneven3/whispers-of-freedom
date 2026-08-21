@@ -35,11 +35,8 @@ func clear() -> void:
 	if _label:
 		_label.text = ""
 
-## MovementBrokerDebugReporter and CombatDebugReporter both push to this same
-## panel_key=1 context — merge into a persistent dict instead of replacing,
-## so whichever pushes last on a physics frame doesn't wipe the other's
-## fields (was: combat state visible for at most one frame before Movement's
-## every-physics-frame push overwrote it).
+## Dos reporters empujan al mismo panel: se mezcla en vez de reemplazar, o el
+## último de cada frame de física borra los campos del otro.
 func push_data(data: Dictionary) -> void:
 	if not _label: return
 	_data.merge(data, true)

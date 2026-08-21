@@ -27,10 +27,8 @@ func _init(
 	stagger_class = p_stagger_class
 	hit_position = p_hit_position
 
-## A hit collider may be a hitbox/mesh child rather than the entity that owns
-## apply_damage() — walk up one level to the parent when the collider itself
-## doesn't implement the contract. Shared by CombatBroker and ArrowProjectile
-## so the fallback rule can't drift between melee and ranged hit resolution.
+## El collider golpeado puede ser un hijo y no la entidad con apply_damage():
+## sube un nivel. Compartido para que melee y a distancia no se separen.
 static func resolve_receiver(target: Node) -> Node:
 	if target and not target.has_method("apply_damage") and target.get_parent():
 		return target.get_parent()

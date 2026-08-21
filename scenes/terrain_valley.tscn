@@ -1,22 +1,122 @@
-[gd_scene format=3 uid="uid://cvalley0scene1"]
-
-; Escenario "valle": meseta alta al norte con un lago, y un rio grande
-; bajando hasta la parte baja al sur. El terreno lo genera
-; tools/worldgen/generate_valley.gd -- no se esculpe a mano.
-;
-; NO comparte NADA con terrain_base.tscn salvo el player. En particular
-; tiene su propio data_directory Y su propio Terrain3DAssets: son dos
-; propiedades independientes, y reusar el terrain_assets.tres del terreno
-; esculpido dejaria que el @tool del instancer de pasto lo mute en memoria
-; con solo abrir esta escena en el editor, y que un `--editor --import`
-; posterior hornee esa mutacion en un archivo versionado.
+[gd_scene format=3 uid="uid://d7ktou0cqiyg"]
 
 [ext_resource type="Script" uid="uid://djl4pjc3xqbff" path="res://scripts/world/grass_terrain_instancer.gd" id="grass_terrain_instancer"]
-[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="player_scene"]
-[ext_resource type="Terrain3DAssets" path="res://world_data/terrain_valley/valley_assets.tres" id="valley_assets"]
 [ext_resource type="ArrayMesh" path="res://world_data/terrain_valley/lake_mesh.res" id="lake_mesh"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="player_scene"]
 [ext_resource type="ArrayMesh" path="res://world_data/terrain_valley/river_mesh.res" id="river_mesh"]
-[ext_resource type="Shader" path="res://scripts/world/water_stylized.gdshader" id="water_shader"]
+[ext_resource type="Terrain3DAssets" uid="uid://d2toqen3dokpp" path="res://world_data/terrain_valley/valley_assets.tres" id="valley_assets"]
+[ext_resource type="Shader" uid="uid://csxumq6yp3di1" path="res://scripts/world/water_stylized.gdshader" id="water_shader"]
+
+[sub_resource type="Gradient" id="Gradient_sdifa"]
+offsets = PackedFloat32Array(0.2, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_yhfns"]
+noise_type = 2
+frequency = 0.03
+cellular_jitter = 3.0
+cellular_return_type = 0
+domain_warp_enabled = true
+domain_warp_type = 1
+domain_warp_amplitude = 50.0
+domain_warp_fractal_type = 2
+domain_warp_fractal_lacunarity = 1.5
+domain_warp_fractal_gain = 1.0
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_mebtc"]
+noise = SubResource("FastNoiseLite_yhfns")
+color_ramp = SubResource("Gradient_sdifa")
+seamless = true
+
+[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_valley"]
+_shader_parameters = {
+&"bias_distance": null,
+&"blend_sharpness": null,
+&"depth_blur": null,
+&"enable_macro_variation": null,
+&"enable_projection": null,
+&"flat_terrain_normals": null,
+&"macro_variation1": null,
+&"macro_variation2": null,
+&"macro_variation_slope": null,
+&"mipmap_bias": null,
+&"noise1_angle": null,
+&"noise1_offset": null,
+&"noise1_scale": null,
+&"noise2_scale": null,
+&"noise_texture": SubResource("NoiseTexture2D_mebtc"),
+&"projection_threshold": null
+}
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_waves"]
+noise_type = 0
+frequency = 0.016
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_wavenormals"]
+width = 512
+height = 512
+seamless = true
+as_normal_map = true
+bump_strength = 1.4
+noise = SubResource("FastNoiseLite_waves")
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_cells"]
+noise_type = 2
+frequency = 0.018
+cellular_return_type = 3
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_foam"]
+width = 512
+height = 512
+seamless = true
+noise = SubResource("FastNoiseLite_cells")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_lake"]
+shader = ExtResource("water_shader")
+shader_parameter/shallow_color = Color(0.31, 0.62, 0.63, 1)
+shader_parameter/deep_color = Color(0.05, 0.17, 0.28, 1)
+shader_parameter/foam_color = Color(0.9, 0.95, 0.97, 1)
+shader_parameter/sky_color = Color(0.42, 0.6, 0.82, 1)
+shader_parameter/uv_to_meters = Vector2(1, 98)
+shader_parameter/world_space_noise = true
+shader_parameter/shore_meters = 9.0
+shader_parameter/foam_meters = 1.8
+shader_parameter/foam_jitter_meters = 2.0
+shader_parameter/foam_detail_meters = 5.0
+shader_parameter/wave_meters = 5.5
+shader_parameter/wave_strength = 1.0
+shader_parameter/wave_speed = 0.35
+shader_parameter/flow_meters_per_second = Vector2(0.12, 0.05)
+shader_parameter/roughness_value = 0.14
+shader_parameter/fresnel_power = 4.0
+shader_parameter/fresnel_strength = 0.32
+shader_parameter/glint_strength = 0.07
+shader_parameter/wave_normal_map = SubResource("NoiseTexture2D_wavenormals")
+shader_parameter/foam_pattern = SubResource("NoiseTexture2D_foam")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_river"]
+shader = ExtResource("water_shader")
+shader_parameter/shallow_color = Color(0.33, 0.63, 0.62, 1)
+shader_parameter/deep_color = Color(0.1, 0.3, 0.38, 1)
+shader_parameter/foam_color = Color(0.93, 0.97, 0.98, 1)
+shader_parameter/sky_color = Color(0.55, 0.72, 0.92, 1)
+shader_parameter/uv_to_meters = Vector2(40, 13.5)
+shader_parameter/world_space_noise = true
+shader_parameter/shore_meters = 3.5
+shader_parameter/foam_meters = 1.0
+shader_parameter/foam_jitter_meters = 1.3
+shader_parameter/foam_detail_meters = 2.5
+shader_parameter/wave_meters = 2.6
+shader_parameter/wave_strength = 1.0
+shader_parameter/wave_speed = 0.8
+shader_parameter/flow_meters_per_second = Vector2(0.6, 3)
+shader_parameter/roughness_value = 0.14
+shader_parameter/fresnel_power = 4.0
+shader_parameter/fresnel_strength = 0.4
+shader_parameter/glint_strength = 0.1
+shader_parameter/wave_normal_map = SubResource("NoiseTexture2D_wavenormals")
+shader_parameter/foam_pattern = SubResource("NoiseTexture2D_foam")
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 
@@ -27,56 +127,48 @@ sky_material = SubResource("ProceduralSkyMaterial_sky")
 background_mode = 2
 sky = SubResource("Sky_sky")
 tonemap_mode = 2
+fog_enabled = true
+fog_mode = 1
+fog_light_color = Color(0.66, 0.73, 0.82, 1)
+fog_light_energy = 1.0
+fog_sun_scatter = 0.15
+fog_density = 1.0
+fog_aerial_perspective = 0.6
+fog_sky_affect = 0.0
+fog_depth_curve = 0.9
+fog_depth_begin = 60.0
+fog_depth_end = 620.0
 
-[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_valley"]
+[node name="TerrainValley" type="Node3D" unique_id=2120869305]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
-render_priority = 0
-shader = ExtResource("water_shader")
-shader_parameter/shallow_color = Color(0.29, 0.61, 0.62, 1)
-shader_parameter/deep_color = Color(0.06, 0.2, 0.31, 1)
-shader_parameter/foam_color = Color(0.85, 0.94, 0.96, 1)
-shader_parameter/roughness_value = 0.06
-shader_parameter/metallic_value = 0.35
-shader_parameter/shore_band = 0.22
-shader_parameter/foam_band = 0.07
-shader_parameter/foam_speed = 0.6
-shader_parameter/foam_scale = 26.0
-shader_parameter/wave_speed = 0.35
-shader_parameter/wave_scale = 5.0
-shader_parameter/wave_strength = 0.22
-shader_parameter/flow_speed = 0.25
-
-[node name="TerrainValley" type="Node3D"]
-
-[node name="Terrain3D" type="Terrain3D" parent="." groups=["terrain"]]
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=779493658 groups=["terrain"]]
 data_directory = "res://world_data/terrain_valley"
 material = SubResource("Terrain3DMaterial_valley")
 assets = ExtResource("valley_assets")
 top_level = true
+metadata/_edit_lock_ = true
 
-[node name="Water" type="Node3D" parent="."]
+[node name="Water" type="Node3D" parent="." unique_id=1373303252]
 
-[node name="Lake" type="MeshInstance3D" parent="Water"]
+[node name="Lake" type="MeshInstance3D" parent="Water" unique_id=1011112156]
+material_override = SubResource("ShaderMaterial_lake")
 mesh = ExtResource("lake_mesh")
-material_override = SubResource("ShaderMaterial_water")
 
-[node name="River" type="MeshInstance3D" parent="Water"]
+[node name="River" type="MeshInstance3D" parent="Water" unique_id=1825535179]
+material_override = SubResource("ShaderMaterial_river")
 mesh = ExtResource("river_mesh")
-material_override = SubResource("ShaderMaterial_water")
 
-; Junto a la orilla sur del lago, mirando al nacimiento del rio: es el peor
-; caso de la escena (agua + pasto + la bajada entera del valle en cuadro).
-[node name="Player" parent="." instance=ExtResource("player_scene")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 145, 320)
+[node name="Player" parent="." unique_id=1137944764 instance=ExtResource("player_scene")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 307.98175, 224.171, 98.65657)
 
-[node name="GrassInstancer" type="Node3D" parent="."]
+[node name="GrassInstancer" type="Node3D" parent="." unique_id=788641714]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 307.98175, 0, 98.65657)
 script = ExtResource("grass_terrain_instancer")
 terrain_path = NodePath("../Terrain3D")
 blade_asset_path = "uid://drjg4oyvdh8jv"
-material_mode = 1
 card_texture_path = "uid://bq5hw4reh26yo"
-blade_count = 16000
+material_mode = 1
+blade_count = 96000
 field_radius = 60.0
 clump_count = 3000
 clump_spread = 1.5
@@ -84,16 +176,11 @@ min_scale = 0.8
 max_scale = 1.2
 blade_color = Color(0.26666668, 0.35686275, 0.02745098, 1)
 tip_color = Color(0.15294118, 0.27058825, 0.050980393, 1)
-wind_speed = 1.6
-wind_strength = 0.35
-sway_frequency = 2.2
-sway_amplitude = 0.06
 base_fade_height = 0.2
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 0, 320)
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1043465500]
 transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0, 200, 0)
 shadow_enabled = true
 
-[node name="Environment" type="WorldEnvironment" parent="."]
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=1066532662]
 environment = SubResource("Environment_env")

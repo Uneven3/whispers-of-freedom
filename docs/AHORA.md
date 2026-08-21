@@ -341,55 +341,116 @@ verificó limpio después de cada corrida.
 
 El dato es correcto pero **la escena no renderiza** — ver el foco de abajo.
 
-## Próximo foco — acordado 2026-08-20 para la sesión siguiente
+## §15 aplicado, densidad de pasto, agua y niebla — 2026-08-21
 
-**El acuerdo explícito con el usuario: jugar, y arreglar lo que ya está
-hecho y no funciona.** Nada nuevo hasta cerrar eso. Se acumularon varias
-cosas construidas y verificadas headless que nunca se tocaron con las manos,
-y §17 dice que eso no cuenta como hecho.
+### Comentarios: 762 → 403 líneas, 62 bloques ilegales → 0
 
-### Lo que está roto y hay que arreglar
+§15 no dice "sin comentarios": dice invariantes de ≤3 líneas, nunca el *qué*,
+y el rationale largo a `docs/`. Se hicieron las tres cosas por separado, y el
+conocimiento no se perdió — se mudó y ahora tiene índice en `docs/README.md`.
 
-1. **`scenes/terrain_valley.tscn` no renderiza.** El dato del terreno es
-   correcto (verificado numéricamente: fondo del lago 128,8 bajo una línea de
-   agua de 132, meseta 137,4, valle 23,5; una región, rango 0-143,5), la
-   escena lo carga, pero no se dibuja nada — el marrón de las capturas es el
-   color de suelo del cielo procedural, no el terreno. Causa no identificada.
-   **Abrirla en el editor a mano** es el próximo paso: Terrain3D da mucha más
-   información ahí que desde un script.
-2. **El agua opaca con reflejo estilizado sigue sin medir.**
-   `scripts/world/water_stylized.gdshader` está escrito y la escena lo usa,
-   pero no se puede medir lo que no se dibuja. Depende del punto 1.
-3. **Los dos temporizadores fallan en la escena del valle**, cada uno a su
-   manera: el de GPU devuelve un valor congelado (mediana, p95 y max
-   idénticos en todas las fases) y el reloj de pared se clava en un cap de
-   145 fps en las dos escenas. Ningún número del valle debe citarse hasta
-   resolver esto.
+`docs/movimiento.md` es nuevo: spawn, escaleras, suelo, trepar, visuales,
+jerarquía de nodos, arbitraje de combate, cámara.
+
+**La trampa que casi se pierde:** `##` pegado a una declaración **es API que
+consume el editor** (descripción de clase en Ayuda, tooltip del Inspector).
+Mudarlo entero a `docs/` le saca el tooltip a quien tunea desde el Inspector.
+Se comprime en el lugar; sólo el `##` suelto dentro de una función es prosa
+mudable.
+
+Verificación: el generador del valle regenera **byte a byte idéntico** (md5
+de los tres `.res`), y los renders salieron iguales. Los tests no validan
+comentarios, así que ninguna de las dos cosas la cubre GUT.
+
+### El valle renderiza y se mide — las entradas "roto" eran falsas
+
+Medido: **8,47 ms**, mediana 8,47 / p95 8,48 / max 8,50. Los dos
+temporizadores funcionan. Las tres entradas de "lo que está roto" del foco
+anterior estaban desactualizadas.
+
+### Densidad de pasto: la curva es en U
+
+Tabla completa en `presupuesto_render.md`. Resumen: **más pasto sale más
+barato hasta las ~192 000 briznas**, porque cada brizna opaca ocluye píxeles
+del shader caro de Terrain3D vía Early-Z. Adoptado **96 000 (8,5/m²)** y no
+el mínimo, porque a 192 000 el instrumento de overdraw satura y el margen
+para lo que no existe todavía vale más que 0,41 ms.
+
+`terrain_valley` pasó de 8,46 a 5,82 ms **subiendo** el pasto x6.
+
+### Agua: dos variantes, misma plata
+
+`water_stylized.gdshader` reescrito: la normal viene guardada en una
+`NoiseTexture2D` en vez de derivarse por diferencia central sobre ruido
+procedural. Eran **44 `sin()` por píxel** y sin mipmaps, que es por qué había
+un fade de detalle — un parche a un problema que la técnica se causaba sola.
+
+`water_windwaker.gdshader` es nuevo: bandas duras, parches de espuma celular,
+contorno de orilla. Archivo aparte porque la diferencia es de técnica.
+
+Parado en la orilla: **11,81 ms la estilizada, 11,63 el Wind Waker**. La
+elección es estética.
+
+**El peor caso de la escena es mirar el lago, no estar parado en el pasto**:
+sin pasto que ocluya se paga el terreno entero.
+
+### Niebla de perspectiva aérea: +0,48 ms
+
+Agregada a `terrain_valley.tscn`. No tapa una distancia corta — hace que la
+profundidad se lea, y de yapa disuelve el fondo plano de Terrain3D contra el
+cielo.
+
+Reencuadre verificado: la distancia de visión del *terreno* en BOTW es larga
+y sin niebla; lo corto es el LOD de detalle y actores.
+
+### Dos experimentos que NO funcionaron — no repetirlos
+
+1. **Normal map horneado desde el albedo del suelo.** Se probó a fuerza 4,0 y
+   1,2. Las dos veces el terreno lejano chispea: relieve por debajo del píxel
+   sin nada que lo filtre, la misma clase de problema que tenía el ruido del
+   agua. Cerca no gana casi nada porque el relieve pintado de
+   `painterly-meadow-grass-002` ya hace ese trabajo. Revertido entero.
+2. **Igualar `blade_color`/`tip_color` al promedio de la textura del suelo.**
+   La comparación estaba mal hecha: el pasto es `unshaded` y el terreno está
+   iluminado, así que comparar albedo crudo contra albedo crudo mide lo que
+   no es. Medido sobre píxeles renderizados el escalón es de **+10,9% de
+   luminancia** — los colores originales ya estaban bien. Revertido.
+
+## Próximo foco — acordado 2026-08-21
+
+### Dos decisiones de un número, que sólo se pueden tomar mirando
+
+1. **`blade_height`.** Con 1,4 briznas/m² no se notaba; con 8,5 el pasto le
+   llega al cuello a la cápsula. Hay que decidir si esa escala es la que se
+   quiere.
+2. **Cuál de las dos aguas.** Cuestan lo mismo (0,18 ms de diferencia).
+   `--water=stylized|windwaker` en `scene_report.gd` las intercambia sin
+   tocar la escena.
+
+Las dos son §17: se juegan, no se miran quietas. Y el shader de agua es
+animado, así que una captura fija esconde problemas de movimiento.
 
 ### Lo que está hecho pero nunca se jugó (§17)
 
-4. **El pasto opaco**, ya adoptado en `terrain_base.tscn`. Los números dicen
-   que entra en presupuesto; falta ver si se ve bien. Las briznas miden
-   1,06 m contra una cápsula de ~1,8 m — pasto hasta la cintura, y hay que
-   decidir si esa escala es la correcta.
-5. **La interpolación de física**, recién activada. Cambia cómo se ve el
-   movimiento y sólo se puede juzgar moviéndose. Atención al spawn, que es el
-   único teletransporte del proyecto.
-6. **La caja completa**: movimiento, las 4 acciones de combate con stamina,
-   horse, escaleras y escalera de mano, `CombatDummy`. Nada de esto se
-   verificó jugado.
+3. **La caja completa**: movimiento, las 4 acciones de combate con stamina,
+   horse, escaleras y escalera de mano, `CombatDummy`.
+4. **La interpolación de física**, activada el 2026-08-20. Sólo se juzga
+   moviéndose; atención al spawn, el único teletransporte del proyecto.
 
 ### Deuda anotada, sin urgencia
 
-7. Corregir la violación de §14 en `strike_action.gd` (llama
-   `inject_forced_proposal()` directo en vez de señal-hacia-arriba +
-   `EntityController` reenvía) — antes de que otro sistema copie el patrón.
-8. Decidir la premisa de mundo/narrativa (`NORTE.md` → Decisiones abiertas) y
-   la licencia del proyecto.
-9. **El terreno sigue siendo la tajada más grande del presupuesto** (8,6 ms
-   de 16,67). Hipótesis sin probar: el costo está en el shader por píxel de
-   `Terrain3DMaterial` (macro variation, triplanar, depth blur, noise, todo
-   en default), no en el clipmap — ya sabemos que no somos vertex-bound.
+5. `world_data/terrain/terrain_assets.tres` está modificado por el editor: el
+   `@tool` del instancer horneó el shader opaco adentro de un archivo
+   versionado con sólo abrir la escena. Hoy coincide con la realidad, pero el
+   mecanismo se va a repetir.
+6. El generador no preserva el UID de `valley_assets.tres`, así que la escena
+   avisa `invalid UID` y cae al path de texto. Funciona, pero ensucia el log.
+7. Corregir la violación de §14 en `strike_action.gd`.
+8. Decidir la premisa de mundo/narrativa (`NORTE.md`) y la licencia.
+9. **El terreno sigue siendo la tajada más grande** (8,6 ms de 16,67).
+   Hipótesis sin probar: el costo está en el shader por píxel de
+   `Terrain3DMaterial`, no en el clipmap — ya sabemos que no somos
+   vertex-bound.
 
 ## Rendimiento del pasto — superado, ver `docs/presupuesto_render.md`
 

@@ -6,6 +6,14 @@
 es el complemento, no hace falta duplicar en prosa lo que ya se lee en
 `scripts/`.
 
+**Rationale, por §15.** Los comentarios del código quedan en invariantes de
+tres líneas o menos; el porqué largo vive acá y el código lo apunta por
+nombre de sección:
+`movimiento.md` (player action stack: spawn, escaleras, trepar, arbitraje de
+combate, cámara), `pasto_godot.md` (los dos shaders de pasto y el instancer),
+`SISTEMAS.md` §Agua y §Generación de terreno, `presupuesto_render.md` (costos
+medidos), `tools/measure/README.md` (cómo medir y qué contamina).
+
 **`reference/breath-of-freedom/`** — docs de un juego hermano en Bevy/Rust
 (otro motor, no aplica directo a GDScript). Referencia de disciplina de
 documentación y del patrón Actor/Intents/Brain en su forma más madura; no se

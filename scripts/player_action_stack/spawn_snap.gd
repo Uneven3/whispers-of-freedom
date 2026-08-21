@@ -2,34 +2,11 @@
 class_name SpawnSnap
 extends Node
 
-## Snaps the parent Node3D to ground height on spawn, once, by querying a
-## Terrain3D node registered in the "terrain" group — not a NodePath/sibling
-## reach, since Player's composition root (this scene) can't know what scene
-## it'll be dropped into (§3 of ARCHITECTURE.md). No "terrain" group member
-## (a scene with a flat, non-Terrain3D ground) is a normal case, not a
-## failure: no-op.
-##
-## Untyped/dynamic calls into Terrain3D on purpose: addons/terrain_3d/ isn't
-## committed to this repo (see AHORA.md), so a static Terrain3D type here
-## would fail to parse for anyone who hasn't installed the plugin, breaking
-## Player even in scenes that don't use terrain at all.
-##
-## get_height() returns the ground height at the Body's ORIGIN, not its
-## feet — the capsule collider is centered on the Body. Landing the origin
-## directly on the terrain buries the bottom half of the capsule in the
-## mesh, which is exactly "the player is stuck in the ground". The fix adds
-## the capsule's half-height on top, read from BodyReader
-## (get_body_half_height()) instead of re-deriving capsule math here — same
-## single-source-of-truth BodyReader that motors/services already use.
-##
-## @tool so this previews live in the editor too — see _queue_snap(). If
-## MovementBroker's own script isn't @tool (it isn't), get_body_reader()
-## has nothing to return while editing, so half-height falls back to
-## _DEFAULT_HALF_HEIGHT there; only the running game reads the real capsule.
+## Apoya al padre en el suelo una vez, al aparecer, contra el Terrain3D del
+## grupo "terrain". Que no haya ninguno es un caso normal, no una falla.
+## Rationale y las tres trampas de este archivo: docs/movimiento.md, "Spawn".
 
-## Relative to this node's parent (the Player root) — matches brain_path's
-## own pattern (movement_broker.gd) of a NodePath default that already
-## matches player.tscn's real layout.
+## Relativo al padre, mismo patrón que MovementBroker.brain_path.
 @export var body_reader_source: NodePath = NodePath("../EntityController/MovementBroker"):
 	set(value):
 		body_reader_source = value
@@ -42,7 +19,7 @@ extends Node
 @export_tool_button("Snap to terrain now")
 var snap_now_action: Callable = _snap_to_terrain
 
-## Matches BodyReader's own fallback when no capsule shape is found.
+## Igual al fallback de BodyReader cuando no encuentra cápsula.
 const _DEFAULT_HALF_HEIGHT: float = 1.0
 
 var _ready_done: bool = false
@@ -50,14 +27,12 @@ var _snap_queued: bool = false
 
 func _ready() -> void:
 	_ready_done = true
-	# One frame so a sibling Terrain3D (loaded earlier or later in tree order)
-	# has finished loading its regions, and MovementBroker has built its
-	# BodyReader, before we query either.
+	# Un frame: el Terrain3D tiene que terminar de cargar sus regiones y
+	# MovementBroker de construir su BodyReader antes de consultarlos.
 	await get_tree().process_frame
 	_snap_to_terrain()
 
-## Debounces Inspector edits (Godot sets every exported var once while
-## deserializing the scene, before _ready runs) into a single snap.
+## Godot escribe cada @export una vez al deserializar: esto los junta en uno.
 func _queue_snap() -> void:
 	if not _ready_done or _snap_queued:
 		return
@@ -73,23 +48,12 @@ func _snap_to_terrain() -> void:
 	if parent == null:
 		return
 	if not Engine.is_editor_hint():
-		# Terrain3D's default Dynamic collision mode only generates collision
-		# shapes around whichever camera it's told to track (set_camera());
-		# nothing calls it automatically outside the editor. Its own editor
-		# plugin calls set_camera() on every 3D viewport interaction (see
-		# addons/terrain_3d/src/editor_plugin.gd), which is why sculpting/
-		# testing height in-editor can look fine while a real Play session —
-		# where nothing wires this up — has no collision anywhere and the
-		# capsule falls straight through despite landing at the right height
-		# on spawn. %Camera3D is unique within player.tscn's own scope, same
-		# as SpawnSnap, so no NodePath export needed for it.
-		# get_node_or_null, not the bare %Camera3D shorthand — that throws
-		# instead of returning null when no such unique node exists, which
-		# is the normal case for anything that isn't the real player.tscn
-		# (test doubles, scenes without a Player).
-		var cam: Camera3D = get_node_or_null("%Camera3D") as Camera3D
-		if cam:
-			terrain.call("set_camera", cam)
+		# Sin esto NO HAY COLISION en una sesión de Play y la cápsula cae de
+		# largo, sin error (docs/movimiento.md, "La trampa de la colisión").
+		# get_node_or_null y no %Camera3D: el atajo tira en vez de dar null.
+		var collision_camera: Camera3D = get_node_or_null("%Camera3D") as Camera3D
+		if collision_camera:
+			terrain.call("set_camera", collision_camera)
 	var terrain_data: Object = terrain.get("data")
 	if terrain_data == null:
 		return
@@ -97,23 +61,15 @@ func _snap_to_terrain() -> void:
 	if is_nan(height):
 		return
 	parent.global_position.y = height + _get_body_half_height() + clearance
-	# Con physics_interpolation activo (project.godot), el motor dibuja
-	# posiciones intermedias entre el tick anterior y el actual. Este salto de
-	# spawn no es movimiento: sin avisar, los primeros frames muestran al
-	# jugador deslizandose desde donde estaba antes del snap hasta el suelo.
-	# reset_physics_interpolation() descarta el estado previo y arranca desde
-	# la posicion nueva. Regla general: todo teletransporte necesita esta
-	# llamada; el movimiento continuo no.
+	# Todo teletransporte necesita esto con physics_interpolation activo, o
+	# los primeros frames muestran al jugador deslizándose desde la posición
+	# vieja. El movimiento continuo no.
 	parent.reset_physics_interpolation()
 
 func _get_body_half_height() -> float:
 	if Engine.is_editor_hint():
-		# MovementBroker's script isn't @tool, so while editing it's only a
-		# placeholder instance — has_method() still reports get_body_reader()
-		# (placeholders keep the declared API surface), but actually calling
-		# it throws ("Attempt to call a method on a placeholder instance.
-		# Check if the script is in tool mode."). Skip the call outright
-		# rather than let has_method() lie about it being safe.
+		# MovementBroker no es @tool: en el editor es un placeholder y
+		# has_method() MIENTE — reporta get_body_reader() pero llamarlo tira.
 		return _DEFAULT_HALF_HEIGHT
 	var broker: Node = get_node_or_null(body_reader_source)
 	if broker == null or not broker.has_method("get_body_reader"):

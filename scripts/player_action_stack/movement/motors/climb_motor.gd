@@ -19,12 +19,8 @@ func gather_proposals(current_mode: int, intents: Intents, services: Array[BaseS
 	var ground: GroundService = _get_service(services, GroundService) as GroundService
 	var on_floor: bool = ground != null and ground.is_on_floor()
 	var climbing: bool = current_mode == LocomotionState.ID.CLIMB
-	# Sticky-on-floor: at curved apexes (sphere/cylinder top) `is_on_floor()` is
-	# true and the waist cast geometry flickers — without this clause, mode would
-	# oscillate Climb↔Walk every frame, producing a yaw seizure.
-	# We only treat as "near_apex" if on floor AND NOT hitting something at head level
-	# (sensor-relative approach). The ledge_point check ensures we are actually
-	# at a ledge and not just on flat ground.
+	# En el ápice de una superficie curva is_on_floor() da true y el cast de
+	# cintura parpadea: sin esto el modo oscila Climb↔Walk cada frame.
 	var facts: LedgeFacts = ledge.get_ledge_facts() if ledge else null
 	var near_apex: bool = on_floor and facts and not facts.has_head_hit and facts.ledge_point != Vector3.ZERO
 
@@ -42,15 +38,8 @@ func tick(delta: float, intents: Intents, body: CharacterBody3D, stamina: Stamin
 	if climb_normal == Vector3.ZERO:
 		return
 
-	# At the top of a curved surface (sphere/cylinder apex) the physics engine classifies
-	# the contact as floor (normal ≈ UP), not wall. is_on_floor() is the authoritative
-	# detector for this — it works regardless of which direction the waist cast happens to
-	# point, unlike checking climb_normal (which reflects the cast hit point, not the body
-	# contact). When near the apex, suppress the yaw snap and wall_stick entirely so the
-	# player keeps the last stable orientation and can_continue_climbing() stays consistent.
-	# We only treat as "near_apex" if on floor AND NOT hitting something at head level
-	# (sensor-relative approach). The ledge_point check ensures we are actually
-	# at a ledge and not just on flat ground.
+	# is_on_floor() es el detector autoritativo del ápice, no climb_normal
+	# (docs/movimiento.md, "Trepar").
 	var ground: GroundService = _get_service(services, GroundService) as GroundService
 	var on_floor: bool = ground.is_on_floor() if ground else body.is_on_floor()
 	# NOTE: near_apex formula is duplicated in gather_proposals — G2 soft signal; do not extract helper at this scale.
@@ -59,11 +48,8 @@ func tick(delta: float, intents: Intents, body: CharacterBody3D, stamina: Stamin
 	var touching_wall: bool = ledge.can_continue_climbing() if ledge else body.is_on_wall()
 
 	if not near_apex:
-		# Always flatten the facing direction to horizontal. On curved surfaces (sphere/
-		# cylinder) the climb normal has a vertical component — feeding it raw to
-		# Basis.looking_at tilts the body's Y axis to match the surface normal, which
-		# combined with frame-to-frame is_on_wall() flicker at the apex produces the
-		# "perpendicular to sphere ↔ perpendicular to floor" seizure.
+		# Siempre aplanada a horizontal: cruda a Basis.looking_at inclina el eje
+		# Y del cuerpo y produce la convulsión del ápice.
 		var face_dir: Vector3
 		if not touching_wall:
 			# Approaching: face toward actual wall contact point so subsequent casts keep hitting

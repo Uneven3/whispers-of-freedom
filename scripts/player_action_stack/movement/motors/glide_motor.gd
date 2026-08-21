@@ -23,11 +23,8 @@ func gather_proposals(current_mode: int, intents: Intents, services: Array[BaseS
 	if current_mode == LocomotionState.ID.GLIDE:
 		_previous_wants_glide = intents.wants_glide
 		if intents.wants_glide:
-			## Downgrade to PLAYER_REQUESTED when the player is also requesting a climb on a
-			## climbable wall.  FORCED would outbid ClimbMotor's PLAYER_REQUESTED weight=5,
-			## locking the player into GLIDE while glued to a wall.  Downgrading lets
-			## ClimbMotor win the weight tiebreak (both are now PLAYER_REQUESTED; ClimbMotor
-			## emits override_weight=5 which beats GlideMotor's default weight=0).
+			# FORCED le ganaría al PLAYER_REQUESTED de ClimbMotor y dejaría al
+			# jugador encerrado en GLIDE pegado a la pared.
 			if ledge != null and ledge.can_climb() and intents.wants_climb:
 				return [TransitionProposal.new(LocomotionState.ID.GLIDE, TransitionProposal.Priority.PLAYER_REQUESTED)]
 			return [TransitionProposal.new(LocomotionState.ID.GLIDE, TransitionProposal.Priority.FORCED)]
@@ -40,10 +37,8 @@ func gather_proposals(current_mode: int, intents: Intents, services: Array[BaseS
 	return []
 
 func on_deactivate(_body: CharacterBody3D) -> void:
-	## Reset glide-press memory so the first frame after leaving a wall (or any
-	## non-GLIDE exit) does not suppress a legitimate fresh glide press.
-	## Without this, `_previous_wants_glide` stays `true` from the last GLIDE frame,
-	## causing `fresh_glide_press` to evaluate `false` and blocking re-entry.
+	# Sin esto _previous_wants_glide queda true del último frame de GLIDE y
+	# bloquea la reentrada.
 	_previous_wants_glide = false
 
 func tick(delta: float, intents: Intents, body: CharacterBody3D, stamina: StaminaComponent, _services: Array[BaseService]) -> void:

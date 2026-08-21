@@ -1,102 +1,75 @@
 shader_type spatial;
 render_mode cull_disabled;
 
-// Agua OPACA con reflejo estilizado.
-//
-// POR QUÉ OPACA: medido en este proyecto, sobre la misma superficie, el agua
-// transparente cuesta 1,98x y con refracción 2,26x (docs/presupuesto_render.md).
-// La transparencia pierde Early-Z y la refracción además fuerza una copia de
-// la pantalla por frame. Y a diferencia del pasto, el agua no se puede ralear
-// ni alejar: un lago cubre lo que cubre. Es el peor caso del proyecto, así
-// que se paga la técnica barata.
-//
-// POR QUÉ NO `unshaded`, que es la excepción a la regla del resto del
-// proyecto: el reflejo del cielo ES la iluminación especular estándar contra
-// el radiance map que Godot genera del Sky. Sin evaluación de luz no hay
-// reflejo, y el reflejo es justamente lo que hace que el agua se lea como
-// agua. No hace falta ReflectionProbe para el cielo.
-//
-// LO QUE NO HACE, A PROPÓSITO: no lee DEPTH_TEXTURE ni SCREEN_TEXTURE. El
-// gradiente de orilla y la espuma salen de UV.y, que la geometría define:
-// las mallas se generan sabiendo dónde está la orilla (el lago es un disco
-// con UV radial, el río una cinta con UV.y transversal al cauce), así que la
-// distancia a la orilla es dato de generación, no algo que haya que
-// descubrir leyendo el buffer de profundidad.
+// Rationale y por qué es opaca: docs/SISTEMAS.md, sección "Agua".
 
 uniform vec4 shallow_color : source_color = vec4(0.29, 0.61, 0.62, 1.0);
 uniform vec4 deep_color : source_color = vec4(0.06, 0.20, 0.31, 1.0);
-uniform vec4 foam_color : source_color = vec4(0.85, 0.94, 0.96, 1.0);
+uniform vec4 foam_color : source_color = vec4(0.90, 0.95, 0.97, 1.0);
+uniform vec4 sky_color : source_color = vec4(0.55, 0.72, 0.92, 1.0);
 
-uniform float roughness_value : hint_range(0.0, 1.0) = 0.06;
-uniform float metallic_value : hint_range(0.0, 1.0) = 0.35;
+// La normal viene GUARDADA en la textura, no derivada por diferencia central:
+// eso saca 4 de las 5 evaluaciones de ruido por píxel, y evita que un paso
+// fijo en metros caiga bajo un texel y aplane el relieve.
+uniform sampler2D wave_normal_map : hint_normal, repeat_enable, filter_linear_mipmap;
+uniform sampler2D foam_pattern : hint_default_white, repeat_enable, filter_linear_mipmap;
 
-// UV.y = 0 en la orilla, 1 en el centro. La geometría lo garantiza.
-uniform float shore_band : hint_range(0.0, 0.5) = 0.22;
-uniform float foam_band : hint_range(0.0, 0.3) = 0.07;
-uniform float foam_speed = 0.6;
-uniform float foam_scale = 26.0;
+// Metros que abarca cada eje UV en esta malla. Sin esto una banda en UV mide
+// 9x más en el lago que en el río, que comparten shader.
+uniform vec2 uv_to_meters = vec2(40.0, 13.5);
+uniform bool world_space_noise = false;
 
-uniform float wave_speed = 0.35;
-uniform float wave_scale = 5.0;
-uniform float wave_strength : hint_range(0.0, 1.0) = 0.22;
-// Empuje de la superficie a lo largo de UV.x, para que el río se lea
-// corriendo hacia abajo en vez de quieto.
-uniform float flow_speed = 0.25;
+uniform float shore_meters : hint_range(0.5, 40.0) = 6.0;
+uniform float foam_meters : hint_range(0.0, 10.0) = 1.1;
+uniform float foam_jitter_meters : hint_range(0.0, 10.0) = 1.6;
+uniform float foam_detail_meters : hint_range(0.5, 40.0) = 4.0;
+
+uniform float wave_meters : hint_range(0.2, 40.0) = 2.6;
+uniform float wave_strength : hint_range(0.0, 3.0) = 1.0;
+uniform float wave_speed : hint_range(0.0, 4.0) = 0.5;
+uniform vec2 flow_meters_per_second = vec2(0.0, 0.0);
+
+uniform float roughness_value : hint_range(0.0, 1.0) = 0.10;
+uniform float fresnel_power : hint_range(0.5, 8.0) = 4.0;
+uniform float fresnel_strength : hint_range(0.0, 1.0) = 0.5;
+uniform float glint_strength : hint_range(0.0, 1.0) = 0.10;
 
 varying vec2 v_uv;
-
-// Ruido de valor barato: dos octavas alcanzan para ondas y espuma, y evita
-// depender de una textura (una menos que cargar y muestrear).
-float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-float value_noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	float a = hash(i);
-	float b = hash(i + vec2(1.0, 0.0));
-	float c = hash(i + vec2(0.0, 1.0));
-	float d = hash(i + vec2(1.0, 1.0));
-	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
+varying vec3 v_world;
 
 void vertex() {
 	v_uv = UV;
+	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
-	vec2 flow = vec2(TIME * flow_speed, 0.0);
+	vec2 meters = world_space_noise ? v_world.xz : v_uv * uv_to_meters;
+	meters -= flow_meters_per_second * TIME;
 
-	// Dos capas de ondas en direcciones distintas: una sola se lee como una
-	// textura deslizándose, dos se leen como agua.
-	vec2 p = v_uv * wave_scale + flow;
-	float n1 = value_noise(p + vec2(TIME * wave_speed, TIME * wave_speed * 0.3));
-	float n2 = value_noise(p * 1.9 - vec2(TIME * wave_speed * 0.7, TIME * wave_speed));
-	float waves = (n1 + n2) * 0.5;
+	// Dos capas a escalas distintas: una sola se lee como una textura
+	// deslizándose. Los mipmaps las aplanan solos con la distancia, así que
+	// no hace falta apagar el detalle a mano.
+	vec2 uv_a = meters / wave_meters + vec2(TIME * wave_speed * 0.05, TIME * wave_speed * 0.02);
+	vec2 uv_b = meters / (wave_meters * 2.7) - vec2(TIME * wave_speed * 0.03, TIME * wave_speed * 0.06);
+	vec3 normal_a = texture(wave_normal_map, uv_a).rgb * 2.0 - 1.0;
+	vec3 normal_b = texture(wave_normal_map, uv_b).rgb * 2.0 - 1.0;
+	vec3 wave_normal = normalize(vec3((normal_a.xy + normal_b.xy) * wave_strength, 1.0));
+	NORMAL_MAP = wave_normal * 0.5 + 0.5;
 
-	// Perturbar la normal en espacio tangente, sin mover vértices: así el
-	// reflejo tiembla sin depender de que la malla esté subdividida.
-	vec2 grad = vec2(
-		value_noise(p + vec2(0.06, 0.0)) - n1,
-		value_noise(p + vec2(0.0, 0.06)) - n1);
-	NORMAL_MAP = normalize(vec3(grad * wave_strength * 8.0, 1.0)) * 0.5 + 0.5;
+	float shore_dist = v_uv.y * uv_to_meters.y;
+	vec3 base = mix(shallow_color.rgb, deep_color.rgb, smoothstep(0.0, shore_meters, shore_dist));
 
-	float depth_t = smoothstep(0.0, shore_band, v_uv.y);
-	vec3 base = mix(shallow_color.rgb, deep_color.rgb, depth_t);
+	float jitter = texture(foam_pattern, meters / foam_detail_meters).r - 0.5;
+	float foam_edge = max(foam_meters + jitter * foam_jitter_meters, 0.01);
+	float foam = 1.0 - smoothstep(foam_edge * 0.4, foam_edge, shore_dist);
 
-	// Espuma en la orilla, rota con ruido para que no sea un anillo perfecto.
-	float foam_edge = foam_band * (0.6 + 0.8 * value_noise(
-		v_uv * foam_scale + vec2(TIME * foam_speed, 0.0)));
-	float foam = 1.0 - smoothstep(0.0, foam_edge, v_uv.y);
+	float fresnel = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), fresnel_power);
+	vec3 albedo = mix(base, sky_color.rgb, fresnel * fresnel_strength);
+	// Cresta = cuánto se inclinó la normal. Se apaga sola al mipmapear.
+	albedo += smoothstep(0.55, 0.95, 1.0 - wave_normal.z) * glint_strength;
+	ALBEDO = mix(albedo, foam_color.rgb, foam);
 
-	ALBEDO = mix(base, foam_color.rgb, foam);
-	// La espuma es blanca y mate; el agua abierta es lisa y reflectante.
-	ROUGHNESS = mix(roughness_value, 0.85, foam);
-	METALLIC = mix(metallic_value, 0.0, foam);
-	SPECULAR = 0.6;
-	// Un toque de brillo en las crestas, para que se lea el movimiento
-	// incluso cuando el cielo reflejado es plano.
-	ALBEDO += vec3(smoothstep(0.75, 1.0, waves) * 0.06);
+	METALLIC = 0.0;
+	ROUGHNESS = mix(roughness_value, 0.9, foam);
+	SPECULAR = mix(0.6, 0.2, foam);
 }

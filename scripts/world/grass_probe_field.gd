@@ -2,24 +2,17 @@
 class_name GrassProbeField
 extends Node3D
 
-## Standalone grass viewer for eyeballing/comparing grass meshes side by
-## side -- deliberately NO Terrain3D dependency, flat y=0 ground. Built for
-## docs/pasto_godot.md's vigésima sesión (silhouette pixel-density
-## comparison) so the same setup that was measured can also be opened and
-## looked at in the editor. Not part of the shipped game.
-##
-## Mirrors TerrainGrassInstancer's live-tunable @tool pattern
-## (scripts/world/grass_terrain_instancer.gd) but populates a loose
-## MultiMeshInstance3D instead of registering with Terrain3DInstancer.
+## Visor de pasto suelto para comparar mallas a ojo, sin Terrain3D, suelo
+## plano en y=0. No es parte del juego que se shipea. Contexto:
+## docs/pasto_godot.md.
 
 @export_file("*.blend") var mesh_path: String = "res://art/blender/grass/grass_billboard_clump.blend":
 	set(value):
 		mesh_path = value
 		_queue_rebuild()
-## Flat unshaded StandardMaterial3D (no atlas) -- shows the mesh's own
-## silhouette, e.g. grass_blade_single's V tip, instead of whatever a
-## mismatched atlas UV would crop it to (docs/pasto_godot.md, vigésima
-## sesión). Off uses the real grass_blade.gdshader + card_texture_path atlas.
+## Material plano sin atlas: muestra la silueta real de la malla en vez de
+## lo que un UV de atlas que no corresponde recortaría. Apagado usa el
+## grass_blade.gdshader real.
 @export var flat_material: bool = false:
 	set(value):
 		flat_material = value

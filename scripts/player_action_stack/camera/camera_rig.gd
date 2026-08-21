@@ -10,10 +10,7 @@ extends Node3D
 @export var follow_fov_degrees: float = 75.0
 @export var aim_fov_degrees: float = 56.0
 @export var aim_blend_speed: float = 12.0
-## NodePath to the EntityController relative to this rig. Defaults to the
-## player convention (sibling), same pattern as MovementBroker.brain_path —
-## other entities that want a camera can override this instead of CameraRig
-## silently failing to resolve a sibling that doesn't exist under them.
+## Relativo a este rig. Mismo patrón que MovementBroker.brain_path.
 @export var entity_controller_path: NodePath = NodePath("../EntityController")
 
 var _current_dip: float = 0.0
@@ -82,11 +79,8 @@ func _process(delta: float) -> void:
 	if _reticle_root and _reticle_root.visible:
 		_update_reticle_position()
 
-## Every state directly reachable from FALL that counts as "landed" for the
-## camera dip. Deliberately excludes AUTO_VAULT/MANTLE/CLIMB/GLIDE/WALL_JUMP/
-## EDGE_LEAP/JUMP/STRIKE — those are active traversal/combat the player
-## triggers on purpose, not a passive "hit the ground" landing, even though
-## some (AUTO_VAULT) are also mechanically reachable straight from FALL.
+## Estados alcanzables desde FALL que cuentan como aterrizaje para el bajón
+## de cámara. Qué queda afuera y por qué: docs/movimiento.md, "Cámara".
 const _LANDING_STATES: Array[LocomotionState.ID] = [
 	LocomotionState.ID.WALK,
 	LocomotionState.ID.SPRINT,

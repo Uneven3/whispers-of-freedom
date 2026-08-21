@@ -48,15 +48,9 @@ var _lip_height: float = 0.0
 var _landing_height: float = 0.0
 var _is_occupied: bool = false
 
-## Set by MovementBroker each physics frame, before update_facts(). Narrow,
-## verified-safe skip: while STRIKE is active no FORCED-priority consumer of
-## ledge facts (Mantle requires prior CLIMB/WALL_JUMP, AutoVault's sticky
-## continuation requires current_mode == AUTO_VAULT already) can win
-## arbitration over STRIKE's own FORCED proposal, and AutoVault's non-sticky
-## entry is only PLAYER_REQUESTED priority — it can't preempt STRIKE either.
-## Not extended to other states (stairs/ladder/sprint) without playtesting —
-## see ARCHITECTURE.md §17, feel-affecting traversal changes need to be
-## played, not just green-tested.
+## Permite saltear el cómputo de hechos mientras STRIKE está activo. Salteo
+## angosto y verificado; NO extender a otros estados sin jugarlo (§17).
+## Por qué es seguro: docs/movimiento.md, "Arbitraje de combate".
 var _current_mode: int = -1
 
 var _down_cast: ShapeCast3D
